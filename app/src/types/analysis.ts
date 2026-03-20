@@ -99,6 +99,8 @@ export type RecipeSpec = {
   sourcePath: string;
   inputs: RecipeIO[];
   outputs: RecipeIO[];
+  pattern?: string[];
+  key?: Record<string, RecipeIO>;
   tags: string[];
   diagnostics: Diagnostic[];
 };

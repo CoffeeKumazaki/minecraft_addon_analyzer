@@ -1,21 +1,23 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAnalysisContext } from '@/context/analysis-context'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowLeft } from 'lucide-react'
+import { ItemDetail } from '@/components/detail/item-detail'
+import { BlockDetail } from '@/components/detail/block-detail'
+import { EntityDetail } from '@/components/detail/entity-detail'
+import { RecipeDetail } from '@/components/detail/recipe-detail'
 import type { AnalysisResult } from '@/types'
 
-function getItem(result: AnalysisResult, category: string, id: string) {
+function findEntity(result: AnalysisResult, category: string, id: string) {
   switch (category) {
     case 'items':
-      return result.items.find(i => i.id === id)
+      return { kind: 'item' as const, data: result.items.find(i => i.id === id) }
     case 'blocks':
-      return result.blocks.find(b => b.id === id)
+      return { kind: 'block' as const, data: result.blocks.find(b => b.id === id) }
     case 'entities':
-      return result.entities.find(e => e.id === id)
+      return { kind: 'entity' as const, data: result.entities.find(e => e.id === id) }
     case 'recipes':
-      return result.recipes.find(r => r.id === id)
+      return { kind: 'recipe' as const, data: result.recipes.find(r => (r.id ?? `recipe-${result.recipes.indexOf(r)}`) === id) }
     default:
       return undefined
   }
@@ -31,9 +33,9 @@ export function DetailPage() {
     return null
   }
 
-  const item = getItem(state.result, category, decodeURIComponent(id))
+  const found = findEntity(state.result, category, decodeURIComponent(id))
 
-  if (!item) {
+  if (!found?.data) {
     return (
       <div className="container mx-auto px-4 py-8 text-center">
         <p className="text-muted-foreground">要素が見つかりません</p>
@@ -44,10 +46,7 @@ export function DetailPage() {
     )
   }
 
-  const displayId = 'id' in item ? (item as { id: string }).id : category
-  const tags = 'tags' in item ? (item as { tags: string[] }).tags : []
-  const components = 'components' in item ? (item as { components: Record<string, unknown> }).components : {}
-  const diagnostics = 'diagnostics' in item ? (item as { diagnostics: { level: string; message: string }[] }).diagnostics : []
+  const { textureMap, geometryMap } = state
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-4">
@@ -58,56 +57,18 @@ export function DetailPage() {
         </Link>
       </Button>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="font-mono text-lg">{displayId}</CardTitle>
-          <div className="flex flex-wrap gap-1 mt-2">
-            {tags.map(tag => (
-              <Badge key={tag} variant="secondary">{tag}</Badge>
-            ))}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {'sourcePath' in item && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">ソースパス</h3>
-              <p className="text-sm font-mono">{(item as { sourcePath: string }).sourcePath}</p>
-            </div>
-          )}
-
-          {'health' in item && (item as { health?: number }).health != null && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">ステータス</h3>
-              <p className="text-sm">HP: {(item as { health: number }).health}</p>
-            </div>
-          )}
-
-          {'recipeType' in item && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">レシピタイプ</h3>
-              <p className="text-sm">{(item as { recipeType: string }).recipeType}</p>
-            </div>
-          )}
-
-          {Object.keys(components).length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">コンポーネント</h3>
-              <pre className="text-xs bg-muted p-3 rounded-md overflow-auto max-h-80">
-                {JSON.stringify(components, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {diagnostics.length > 0 && (
-            <div>
-              <h3 className="text-sm font-medium text-muted-foreground mb-1">警告</h3>
-              {diagnostics.map((d, i) => (
-                <p key={i} className="text-sm text-destructive">{d.message}</p>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {found.kind === 'item' && (
+        <ItemDetail item={found.data} textureMap={textureMap} />
+      )}
+      {found.kind === 'block' && (
+        <BlockDetail block={found.data} textureMap={textureMap} geometryMap={geometryMap} />
+      )}
+      {found.kind === 'entity' && (
+        <EntityDetail entity={found.data} textureMap={textureMap} geometryMap={geometryMap} />
+      )}
+      {found.kind === 'recipe' && (
+        <RecipeDetail recipe={found.data} textureMap={textureMap} />
+      )}
     </div>
   )
 }

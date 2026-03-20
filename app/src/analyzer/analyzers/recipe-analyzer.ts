@@ -56,12 +56,32 @@ function extractRecipe(root: Record<string, unknown>, sourcePath: string): Recip
     const outputs = extractOutputs(def)
     const tags = (def.tags ?? []) as string[]
 
+    // Extract pattern and key for shaped recipes
+    let pattern: string[] | undefined
+    let keyMap: Record<string, import('@/types').RecipeIO> | undefined
+    if (recipeType === 'recipe_shaped') {
+      const rawPattern = def.pattern as string[] | undefined
+      if (Array.isArray(rawPattern)) {
+        pattern = rawPattern
+      }
+      const rawKey = def.key as Record<string, unknown> | undefined
+      if (rawKey) {
+        keyMap = {}
+        for (const [char, val] of Object.entries(rawKey)) {
+          const io = parseRecipeIO(val)
+          if (io) keyMap[char] = io
+        }
+      }
+    }
+
     return {
       id,
       recipeType,
       sourcePath,
       inputs,
       outputs,
+      pattern,
+      key: keyMap,
       tags: typeof tags[0] === 'string' ? tags : [],
       diagnostics: [],
     }
