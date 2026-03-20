@@ -3,6 +3,7 @@ export const CATEGORY_DIRS: Record<string, string[]> = {
   items: ['items/', 'bp/items/'],
   blocks: ['blocks/', 'bp/blocks/'],
   entities: ['entities/', 'bp/entities/'],
+  clientEntities: ['entity/', 'rp/entity/'],
   recipes: ['recipes/', 'bp/recipes/'],
   lootTables: ['loot_tables/', 'bp/loot_tables/'],
   spawnRules: ['spawn_rules/', 'bp/spawn_rules/'],

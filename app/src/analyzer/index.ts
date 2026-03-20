@@ -7,6 +7,7 @@ import { analyzeItems } from './analyzers/item-analyzer'
 import { analyzeBlocks } from './analyzers/block-analyzer'
 import { analyzeEntities } from './analyzers/entity-analyzer'
 import { analyzeRecipes } from './analyzers/recipe-analyzer'
+import { mergeClientEntities } from './analyzers/client-entity-merger'
 import { applyEntityTags } from './tagging/entity-rules'
 import { applyItemTags } from './tagging/item-rules'
 import { applyBlockTags } from './tagging/block-rules'
@@ -82,6 +83,10 @@ export async function analyzeAddon(
 
   onProgress?.('レシピを解析中...', 70)
   const recipes = analyzeRecipes(files, fileIndex.recipes)
+
+  // Step 5b: Merge RP client entity info (textures, geometry, animations)
+  onProgress?.('クライアントエンティティを統合中...', 72)
+  mergeClientEntities(files, fileIndex.clientEntities, entities)
 
   // Step 6: Apply behavior tags
   onProgress?.('挙動タグを付与中...', 75)

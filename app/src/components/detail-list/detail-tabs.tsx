@@ -57,7 +57,7 @@ export function DetailTabs({ result }: Props) {
         <BlockList blocks={result.blocks} search={lowerSearch} textureMap={textureMap} geometryMap={geometryMap} />
       </TabsContent>
       <TabsContent value="entities">
-        <EntityList entities={result.entities} search={lowerSearch} />
+        <EntityList entities={result.entities} search={lowerSearch} textureMap={textureMap} geometryMap={geometryMap} />
       </TabsContent>
       <TabsContent value="recipes">
         <RecipeList recipes={result.recipes} search={lowerSearch} />
@@ -121,28 +121,36 @@ function BlockList({ blocks, search, textureMap, geometryMap }: { blocks: BlockS
   )
 }
 
-function EntityList({ entities, search }: { entities: EntitySpec[]; search: string }) {
+function EntityList({ entities, search, textureMap, geometryMap }: { entities: EntitySpec[]; search: string; textureMap: TextureMap | null; geometryMap: GeometryMap | null }) {
   const filtered = entities.filter(e => e.id.toLowerCase().includes(search))
   if (filtered.length === 0) return <EmptyState />
   return (
     <div className="space-y-1">
-      {filtered.map(entity => (
-        <Link key={entity.id} to={`/results/entities/${encodeURIComponent(entity.id)}`}>
-          <Card className="p-3 hover:bg-muted/50 transition-colors">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-mono text-sm">{entity.id}</span>
-                {entity.health != null && (
-                  <span className="text-xs text-muted-foreground ml-2">HP: {entity.health}</span>
-                )}
+      {filtered.map(entity => {
+        const texSrc = entity.textures[0] ? textureMap?.get(entity.textures[0]) : undefined
+        const geoId = entity.geometries[0]
+        const geometry = geoId ? geometryMap?.get(geoId) : undefined
+        return (
+          <Link key={entity.id} to={`/results/entities/${encodeURIComponent(entity.id)}`}>
+            <Card className="p-3 hover:bg-muted/50 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <BlockThumbnail src={texSrc} geometry={geometry} />
+                  <div>
+                    <span className="font-mono text-sm">{entity.id}</span>
+                    {entity.health != null && (
+                      <span className="text-xs text-muted-foreground ml-2">HP: {entity.health}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-1 flex-wrap justify-end">
+                  {entity.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                </div>
               </div>
-              <div className="flex gap-1 flex-wrap justify-end">
-                {entity.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
-              </div>
-            </div>
-          </Card>
-        </Link>
-      ))}
+            </Card>
+          </Link>
+        )
+      })}
     </div>
   )
 }

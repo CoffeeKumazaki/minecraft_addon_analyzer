@@ -49,6 +49,25 @@ export function extractTextureMap(
     }
   }
 
+  // Also index all texture image files by their relative path (without extension).
+  // This enables lookups for entity textures referenced by path (e.g., "textures/entity/my_mob").
+  for (const [filePath] of files) {
+    if (!filePath.endsWith('.png') && !filePath.endsWith('.tga')) continue
+
+    for (const packPath of packPaths) {
+      if (!filePath.startsWith(packPath)) continue
+      const relativePath = filePath.slice(packPath.length).replace(/\.(png|tga)$/, '')
+      if (map.has(relativePath)) break
+
+      const data = files.get(filePath)
+      if (!data) break
+      const mimeType = filePath.endsWith('.tga') ? 'image/x-tga' : 'image/png'
+      const blob = new Blob([data], { type: mimeType })
+      map.set(relativePath, URL.createObjectURL(blob))
+      break
+    }
+  }
+
   return map
 }
 

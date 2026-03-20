@@ -175,6 +175,7 @@ export type FileIndex = {
   items: string[];
   blocks: string[];
   entities: string[];
+  clientEntities: string[];
   recipes: string[];
   lootTables: string[];
   spawnRules: string[];

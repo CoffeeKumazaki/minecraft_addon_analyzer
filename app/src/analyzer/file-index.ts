@@ -10,6 +10,7 @@ export function buildFileIndex(files: VirtualFS, packPaths: string[]): FileIndex
     items: [],
     blocks: [],
     entities: [],
+    clientEntities: [],
     recipes: [],
     lootTables: [],
     spawnRules: [],
@@ -34,7 +35,7 @@ export function buildFileIndex(files: VirtualFS, packPaths: string[]): FileIndex
           const fullDir = packPath + dir
           if (filePath.startsWith(fullDir)) {
             // For content categories (not assets), only include JSON
-            const isContentCategory = ['items', 'blocks', 'entities', 'recipes', 'lootTables', 'spawnRules', 'trading'].includes(category)
+            const isContentCategory = ['items', 'blocks', 'entities', 'clientEntities', 'recipes', 'lootTables', 'spawnRules', 'trading'].includes(category)
             const isJsonOrMcfunction = filePath.endsWith('.json') || filePath.endsWith('.mcfunction')
             const isScriptFile = filePath.endsWith('.js') || filePath.endsWith('.ts')
 
@@ -56,7 +57,7 @@ export function buildFileIndex(files: VirtualFS, packPaths: string[]): FileIndex
         }
         // Also check without pack path prefix (for flat structures)
         if (!categorized && filePath.startsWith(dir)) {
-          const isContentCategory = ['items', 'blocks', 'entities', 'recipes', 'lootTables', 'spawnRules', 'trading'].includes(category)
+          const isContentCategory = ['items', 'blocks', 'entities', 'clientEntities', 'recipes', 'lootTables', 'spawnRules', 'trading'].includes(category)
           if (isContentCategory && filePath.endsWith('.json')) {
             (index as Record<string, string[]>)[category].push(filePath)
             categorized = true
