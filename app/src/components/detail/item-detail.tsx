@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { SectionCard } from './shared/section-card'
 import { ReferenceList } from './shared/reference-list'
 import { DiagnosticList } from './shared/diagnostic-list'

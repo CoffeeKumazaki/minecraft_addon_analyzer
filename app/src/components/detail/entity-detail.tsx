@@ -6,7 +6,7 @@ import { DiagnosticList } from './shared/diagnostic-list'
 import { TextureThumbnail, BlockThumbnail } from './shared/thumbnails'
 import {
   FileText, Link2, AlertTriangle, Heart, Zap,
-  Brain, Calendar, Layers, Image, Box,
+  Brain, Calendar, Layers, Image,
   Clapperboard, Scroll, MapPin,
 } from 'lucide-react'
 import type { EntitySpec } from '@/types'

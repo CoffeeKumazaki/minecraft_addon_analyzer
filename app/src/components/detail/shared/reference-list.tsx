@@ -1,4 +1,3 @@
-import { Badge } from '@/components/ui/badge'
 import { CheckCircle2, AlertCircle } from 'lucide-react'
 import type { ReferenceLink } from '@/types'
 
