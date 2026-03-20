@@ -53,6 +53,20 @@ export type PackInfo = {
   dependencies: DependencySpec[];
 };
 
+export type ItemStats = {
+  maxStackSize?: number;
+  rarity?: string;
+  damage?: number;
+  durability?: number;
+  enchantable?: { slot: string; value: number };
+  food?: { nutrition: number; saturation?: string; canAlwaysEat?: boolean };
+  armor?: { slot: string; protection: number };
+  fuel?: number;
+  cooldown?: { category: string; duration: number };
+  projectile?: string;
+  useModifiers?: { useDuration?: number; movementModifier?: number };
+};
+
 export type ItemSpec = {
   id: string;
   title?: string;
@@ -60,8 +74,20 @@ export type ItemSpec = {
   icon?: string;
   tags: string[];
   components: Record<string, unknown>;
+  stats: ItemStats;
   references: ReferenceLink[];
   diagnostics: Diagnostic[];
+};
+
+export type BlockStats = {
+  miningTime?: number;
+  blastResistance?: number;
+  lightEmission?: number;
+  lightDampening?: number;
+  friction?: number;
+  flammable?: boolean | { catchChance: number; destroyChance: number };
+  mapColor?: string;
+  craftingTable?: { tableName: string; tags: string[] };
 };
 
 export type BlockSpec = {
@@ -72,6 +98,7 @@ export type BlockSpec = {
   textures: string[];
   states?: string[];
   components: Record<string, unknown>;
+  stats: BlockStats;
   references: ReferenceLink[];
   diagnostics: Diagnostic[];
 };

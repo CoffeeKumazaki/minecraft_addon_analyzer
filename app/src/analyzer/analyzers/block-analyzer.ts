@@ -1,4 +1,4 @@
-import type { VirtualFS, BlockSpec, ReferenceLink } from '@/types'
+import type { VirtualFS, BlockSpec, BlockStats, ReferenceLink } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
 
 /**
@@ -21,6 +21,7 @@ export function analyzeBlocks(files: VirtualFS, blockPaths: string[]): BlockSpec
         tags: [],
         textures: [],
         components: {},
+        stats: {},
         references: [],
         diagnostics: [{ level: 'warning', code: 'json_parse_error', message: `JSON 解析エラー: ${error}`, path }],
       })
@@ -75,6 +76,9 @@ function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockS
     }
   }
 
+  // Extract gameplay stats
+  const stats = extractBlockStats(components)
+
   return {
     id,
     sourcePath,
@@ -82,7 +86,78 @@ function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockS
     textures,
     states,
     components,
+    stats,
     references,
     diagnostics: [],
   }
+}
+
+function extractBlockStats(components: Record<string, unknown>): BlockStats {
+  const stats: BlockStats = {}
+
+  // Mining time
+  const mining = components['minecraft:destructible_by_mining']
+  if (mining && typeof mining === 'object') {
+    const v = (mining as Record<string, unknown>).seconds_to_destroy
+    if (typeof v === 'number') stats.miningTime = v
+  }
+
+  // Blast resistance
+  const blast = components['minecraft:destructible_by_explosion']
+  if (blast && typeof blast === 'object') {
+    const v = (blast as Record<string, unknown>).explosion_resistance
+    if (typeof v === 'number') stats.blastResistance = v
+  }
+
+  // Light emission
+  const light = components['minecraft:light_emission']
+  if (typeof light === 'number') stats.lightEmission = light
+  else if (light && typeof light === 'object') {
+    const v = (light as Record<string, unknown>).emission
+    if (typeof v === 'number') stats.lightEmission = v
+  }
+
+  // Light dampening
+  const damp = components['minecraft:light_dampening']
+  if (typeof damp === 'number') stats.lightDampening = damp
+
+  // Friction
+  const fric = components['minecraft:friction']
+  if (typeof fric === 'number') stats.friction = fric
+
+  // Flammable
+  const flame = components['minecraft:flammable']
+  if (typeof flame === 'boolean') {
+    stats.flammable = flame
+  } else if (flame && typeof flame === 'object') {
+    const f = flame as Record<string, unknown>
+    const catchChance = f.catch_chance_modifier
+    const destroyChance = f.destroy_chance_modifier
+    if (typeof catchChance === 'number' && typeof destroyChance === 'number') {
+      stats.flammable = { catchChance, destroyChance }
+    }
+  }
+
+  // Map color
+  const mapColor = components['minecraft:map_color']
+  if (typeof mapColor === 'string') stats.mapColor = mapColor
+  else if (Array.isArray(mapColor) && mapColor.length >= 3) {
+    const [r, g, b] = mapColor as number[]
+    stats.mapColor = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+  }
+
+  // Crafting table
+  const craft = components['minecraft:crafting_table'] as Record<string, unknown> | undefined
+  if (craft && typeof craft === 'object') {
+    const tableName = craft.table_name
+    const tags = craft.crafting_tags
+    if (typeof tableName === 'string') {
+      stats.craftingTable = {
+        tableName,
+        tags: Array.isArray(tags) ? tags.map(String) : [],
+      }
+    }
+  }
+
+  return stats
 }

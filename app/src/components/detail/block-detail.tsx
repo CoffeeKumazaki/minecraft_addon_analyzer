@@ -3,14 +3,23 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { SectionCard } from './shared/section-card'
 import { ReferenceList } from './shared/reference-list'
 import { DiagnosticList } from './shared/diagnostic-list'
-import { ComponentTable } from './shared/component-table'
 import { BlockThumbnail, TextureThumbnail } from './shared/thumbnails'
 import { RecipeCard } from './shared/recipe-diagrams'
-import { FileText, Link2, AlertTriangle, Boxes, Image, ToggleLeft, ChefHat, ArrowRightFromLine } from 'lucide-react'
+import {
+  FileText, Link2, AlertTriangle, Image, ToggleLeft, ChefHat, ArrowRightFromLine,
+  Pickaxe, Shield, Sun, SunDim, Snowflake, Flame, Palette, Hammer,
+} from 'lucide-react'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
-import type { BlockSpec } from '@/types'
+import type { BlockSpec, BlockStats } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
+
+function hasAnyBlockStats(stats: BlockStats): boolean {
+  return stats.miningTime != null || stats.blastResistance != null
+    || stats.lightEmission != null || stats.lightDampening != null
+    || stats.friction != null || stats.flammable != null
+    || stats.mapColor != null || stats.craftingTable != null
+}
 
 type Props = {
   block: BlockSpec
@@ -90,10 +99,98 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, 
         </SectionCard>
       )}
 
-      {/* Components */}
-      {Object.keys(block.components).length > 0 && (
-        <SectionCard title="コンポーネント" icon={Boxes} badge={`${Object.keys(block.components).length}`}>
-          <ComponentTable components={block.components} />
+      {/* Block Stats */}
+      {hasAnyBlockStats(block.stats) && (
+        <SectionCard title="ブロック性能" icon={Hammer}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {block.stats.miningTime != null && (
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+                <Pickaxe className="h-4 w-4 text-stone-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">採掘時間</p>
+                  <p className="text-sm font-medium">{block.stats.miningTime}秒</p>
+                </div>
+              </div>
+            )}
+            {block.stats.blastResistance != null && (
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+                <Shield className="h-4 w-4 text-blue-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">爆発耐性</p>
+                  <p className="text-sm font-medium">{block.stats.blastResistance}</p>
+                </div>
+              </div>
+            )}
+            {block.stats.lightEmission != null && (
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+                <Sun className="h-4 w-4 text-yellow-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">光レベル</p>
+                  <p className="text-sm font-medium">{block.stats.lightEmission}</p>
+                </div>
+              </div>
+            )}
+            {block.stats.lightDampening != null && (
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+                <SunDim className="h-4 w-4 text-gray-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">光減衰</p>
+                  <p className="text-sm font-medium">{block.stats.lightDampening}</p>
+                </div>
+              </div>
+            )}
+            {block.stats.friction != null && (
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+                <Snowflake className="h-4 w-4 text-cyan-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">摩擦係数</p>
+                  <p className="text-sm font-medium">{block.stats.friction}</p>
+                </div>
+              </div>
+            )}
+            {block.stats.flammable != null && (
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+                <Flame className="h-4 w-4 text-orange-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">可燃性</p>
+                  <p className="text-sm font-medium">
+                    {typeof block.stats.flammable === 'boolean'
+                      ? (block.stats.flammable ? 'あり' : 'なし')
+                      : `着火: ${block.stats.flammable.catchChance} / 消失: ${block.stats.flammable.destroyChance}`
+                    }
+                  </p>
+                </div>
+              </div>
+            )}
+            {block.stats.mapColor != null && (
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+                <Palette className="h-4 w-4 text-pink-500" />
+                <div>
+                  <p className="text-xs text-muted-foreground">マップカラー</p>
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block w-4 h-4 rounded border" style={{ backgroundColor: block.stats.mapColor }} />
+                    <p className="text-sm font-medium font-mono">{block.stats.mapColor}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            {block.stats.craftingTable != null && (
+              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2 col-span-2 sm:col-span-3">
+                <Hammer className="h-4 w-4 text-amber-600" />
+                <div>
+                  <p className="text-xs text-muted-foreground">クラフティングテーブル</p>
+                  <p className="text-sm font-medium">{block.stats.craftingTable.tableName}</p>
+                  {block.stats.craftingTable.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {block.stats.craftingTable.tags.map(tag => (
+                        <Badge key={tag} variant="outline" className="text-xs font-mono">{tag}</Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </SectionCard>
       )}
 
