@@ -24,11 +24,20 @@ export function SummaryCard({ result, fileName }: Props) {
     <Card>
       <CardHeader>
         <div className="flex items-start justify-between">
-          <div>
-            <CardTitle className="text-xl">{addon.name || fileName || 'Add-on'}</CardTitle>
-            {addon.description && (
-              <p className="text-sm text-muted-foreground mt-1">{addon.description}</p>
+          <div className="flex items-center gap-3">
+            {addon.iconUrl && (
+              <img
+                src={addon.iconUrl}
+                alt=""
+                className="h-12 w-12 rounded-md object-cover flex-shrink-0"
+              />
             )}
+            <div>
+              <CardTitle className="text-xl">{addon.name || fileName || 'Add-on'}</CardTitle>
+              {addon.description && (
+                <p className="text-sm text-muted-foreground mt-1">{addon.description}</p>
+              )}
+            </div>
           </div>
           {warningCount > 0 && (
             <Badge variant="destructive" className="flex items-center gap-1">

@@ -59,13 +59,26 @@ export async function analyzeAddon(
     if (pack.minEngineVersion) minEngineVersion = pack.minEngineVersion
   }
 
+  const rawName = packs[0]?.name || file.name.replace(/\.(mcaddon|mcpack|zip)$/i, '')
+  const cleanName = rawName.replace(/\s*\[.*?\]\s*/g, '').trim() || rawName
+
+  const headerDesc = (packRoots[0]?.manifest?.header as Record<string, unknown> | undefined)?.description
   const addon: AddonSummary = {
-    name: packs[0]?.name || file.name.replace(/\.(mcaddon|mcpack|zip)$/i, ''),
-    description: undefined,
+    name: cleanName,
+    description: headerDesc ? String(headerDesc) : undefined,
     packTypes: [...packTypes],
     versions,
     minEngineVersion,
     dependencies: allDeps,
+  }
+
+  // Extract pack icon (use first available)
+  for (const packPath of packPaths) {
+    const iconData = files.get(packPath + 'pack_icon.png')
+    if (iconData) {
+      addon.iconUrl = URL.createObjectURL(new Blob([iconData], { type: 'image/png' }))
+      break
+    }
   }
 
   // Step 4: Build file index

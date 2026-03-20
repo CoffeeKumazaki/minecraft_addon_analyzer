@@ -23,6 +23,7 @@ export type AddonSummary = {
   versions: string[];
   minEngineVersion?: string;
   dependencies: DependencySpec[];
+  iconUrl?: string;
 };
 
 export type PackType = 'behavior' | 'resource' | 'script';

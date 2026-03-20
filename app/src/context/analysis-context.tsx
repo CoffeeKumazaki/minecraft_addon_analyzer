@@ -48,6 +48,9 @@ function analysisReducer(state: AnalysisState, action: AnalysisAction): Analysis
           URL.revokeObjectURL(url)
         }
       }
+      if (state.result?.addon.iconUrl) {
+        URL.revokeObjectURL(state.result.addon.iconUrl)
+      }
       return initialState
     default:
       return state
