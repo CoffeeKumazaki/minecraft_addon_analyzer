@@ -13,6 +13,7 @@ import { applyBlockTags } from './tagging/block-rules'
 import { resolveReferences } from './reference-resolver'
 import { generateSummary } from './summary-generator'
 import { extractTextureMap, type TextureMap } from './texture-extractor'
+import { parseGeometries, type GeometryMap } from './geometry-parser'
 
 type ProgressCallback = (step: string, percent: number) => void
 
@@ -23,7 +24,7 @@ type ProgressCallback = (step: string, percent: number) => void
 export async function analyzeAddon(
   file: File,
   onProgress?: ProgressCallback,
-): Promise<{ result: AnalysisResult; textureMap: TextureMap }> {
+): Promise<{ result: AnalysisResult; textureMap: TextureMap; geometryMap: GeometryMap }> {
   const allDiagnostics: Diagnostic[] = []
 
   // Step 1: Extract ZIP
@@ -105,9 +106,12 @@ export async function analyzeAddon(
   for (const entity of entities) allDiagnostics.push(...entity.diagnostics)
   for (const recipe of recipes) allDiagnostics.push(...recipe.diagnostics)
 
-  // Step 8: Extract textures
-  onProgress?.('テクスチャを抽出中...', 85)
+  // Step 8: Extract textures and parse geometries
+  onProgress?.('テクスチャを抽出中...', 83)
   const textureMap = extractTextureMap(files, packPaths)
+
+  onProgress?.('ジオメトリを解析中...', 87)
+  const geometryMap = parseGeometries(files, fileIndex.models)
 
   // Step 9: Generate summary
   onProgress?.('サマリーを生成中...', 90)
@@ -132,5 +136,6 @@ export async function analyzeAddon(
       summary,
     },
     textureMap,
+    geometryMap,
   }
 }

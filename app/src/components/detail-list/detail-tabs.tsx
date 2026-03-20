@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { AlertTriangle, Search } from 'lucide-react'
 import { useAnalysisContext } from '@/context/analysis-context'
 import type { TextureMap } from '@/analyzer/texture-extractor'
+import type { GeometryDef, GeometryMap } from '@/analyzer/geometry-parser'
 import type { AnalysisResult, ItemSpec, BlockSpec, EntitySpec, RecipeSpec, Diagnostic } from '@/types'
 
 type Props = {
@@ -16,6 +17,7 @@ type Props = {
 export function DetailTabs({ result }: Props) {
   const { state } = useAnalysisContext()
   const textureMap = state.textureMap
+  const geometryMap = state.geometryMap
   const [search, setSearch] = useState('')
   const lowerSearch = search.toLowerCase()
 
@@ -52,7 +54,7 @@ export function DetailTabs({ result }: Props) {
         <ItemList items={result.items} search={lowerSearch} textureMap={textureMap} />
       </TabsContent>
       <TabsContent value="blocks">
-        <BlockList blocks={result.blocks} search={lowerSearch} textureMap={textureMap} />
+        <BlockList blocks={result.blocks} search={lowerSearch} textureMap={textureMap} geometryMap={geometryMap} />
       </TabsContent>
       <TabsContent value="entities">
         <EntityList entities={result.entities} search={lowerSearch} />
@@ -91,26 +93,30 @@ function ItemList({ items, search, textureMap }: { items: ItemSpec[]; search: st
   )
 }
 
-function BlockList({ blocks, search, textureMap }: { blocks: BlockSpec[]; search: string; textureMap: TextureMap | null }) {
+function BlockList({ blocks, search, textureMap, geometryMap }: { blocks: BlockSpec[]; search: string; textureMap: TextureMap | null; geometryMap: GeometryMap | null }) {
   const filtered = blocks.filter(b => b.id.toLowerCase().includes(search))
   if (filtered.length === 0) return <EmptyState />
   return (
     <div className="space-y-1">
-      {filtered.map(block => (
-        <Link key={block.id} to={`/results/blocks/${encodeURIComponent(block.id)}`}>
-          <Card className="p-3 hover:bg-muted/50 transition-colors">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <BlockThumbnail src={block.textures[0] ? textureMap?.get(block.textures[0]) : undefined} />
-                <span className="font-mono text-sm">{block.id}</span>
+      {filtered.map(block => {
+        const geoRef = block.references.find(r => r.kind === 'geometry')
+        const geometry = geoRef ? geometryMap?.get(geoRef.target) : undefined
+        return (
+          <Link key={block.id} to={`/results/blocks/${encodeURIComponent(block.id)}`}>
+            <Card className="p-3 hover:bg-muted/50 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <BlockThumbnail src={block.textures[0] ? textureMap?.get(block.textures[0]) : undefined} geometry={geometry} />
+                  <span className="font-mono text-sm">{block.id}</span>
+                </div>
+                <div className="flex gap-1">
+                  {block.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                </div>
               </div>
-              <div className="flex gap-1">
-                {block.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
-              </div>
-            </div>
-          </Card>
-        </Link>
-      ))}
+            </Card>
+          </Link>
+        )
+      })}
     </div>
   )
 }
@@ -190,7 +196,7 @@ function WarningList({ warnings, search }: { warnings: Diagnostic[]; search: str
   )
 }
 
-function BlockThumbnail({ src, size = 40 }: { src?: string; size?: number }) {
+function BlockThumbnail({ src, geometry, size = 40 }: { src?: string; geometry?: GeometryDef; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -203,39 +209,14 @@ function BlockThumbnail({ src, size = 40 }: { src?: string; size?: number }) {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       ctx.imageSmoothingEnabled = false
 
-      const w = img.width
-      const h = img.height
-
-      // True isometric (30°): all edges appear equal length
-      const s = size * 0.42
-      const cx = size / 2
-      const xStep = s * Math.cos(Math.PI / 6) // s * 0.866
-      const yStep = s * Math.sin(Math.PI / 6) // s * 0.5
-      const sideH = s // vertical edge = edge length in true isometric
-      const topY = (size - (2 * yStep + sideH)) / 2
-
-      // Top face vertices
-      const top = { x: cx, y: topY }
-      const topRight = { x: cx + xStep, y: topY + yStep }
-      const topLeft = { x: cx - xStep, y: topY + yStep }
-      const center = { x: cx, y: topY + 2 * yStep }
-
-      // Bottom vertices (offset by sideH vertically)
-      const bottomLeft = { x: cx - xStep, y: topLeft.y + sideH }
-      const bottom = { x: cx, y: center.y + sideH }
-      const bottomRight = { x: cx + xStep, y: topRight.y + sideH }
-
-      // Draw top face
-      drawFace(ctx, img, w, h, top, topRight, topLeft, 1.0)
-
-      // Draw left face (darker)
-      drawFace(ctx, img, w, h, topLeft, center, bottomLeft, 0.7)
-
-      // Draw right face (darkest)
-      drawFace(ctx, img, w, h, center, topRight, bottom, 0.55)
+      if (geometry && geometry.cubes.length > 0) {
+        renderCustomGeometry(ctx, img, geometry, size)
+      } else {
+        renderDefaultCube(ctx, img, size)
+      }
     }
     img.src = src
-  }, [src, size])
+  }, [src, geometry, size])
 
   if (!src) {
     return (
@@ -255,6 +236,145 @@ function BlockThumbnail({ src, size = 40 }: { src?: string; size?: number }) {
       style={{ width: size, height: size, imageRendering: 'pixelated' }}
     />
   )
+}
+
+/** Render standard isometric cube */
+function renderDefaultCube(ctx: CanvasRenderingContext2D, img: HTMLImageElement, size: number) {
+  const w = img.width
+  const h = img.height
+  const s = size * 0.42
+  const cx = size / 2
+  const xStep = s * COS30
+  const yStep = s * SIN30
+  const sideH = s
+  const topY = (size - (2 * yStep + sideH)) / 2
+
+  const top = { x: cx, y: topY }
+  const topRight = { x: cx + xStep, y: topY + yStep }
+  const topLeft = { x: cx - xStep, y: topY + yStep }
+  const center = { x: cx, y: topY + 2 * yStep }
+  const bottomLeft = { x: cx - xStep, y: topLeft.y + sideH }
+  const bottom = { x: cx, y: center.y + sideH }
+
+  drawFace(ctx, img, w, h, top, topRight, topLeft, 1.0)
+  drawFace(ctx, img, w, h, topLeft, center, bottomLeft, 0.7)
+  drawFace(ctx, img, w, h, center, topRight, bottom, 0.55)
+}
+
+const COS30 = Math.cos(Math.PI / 6)
+const SIN30 = Math.sin(Math.PI / 6)
+
+/** Project 3D point to 2D isometric coordinates */
+function isoProject(x: number, y: number, z: number): { x: number; y: number } {
+  return {
+    x: (x - z) * COS30,
+    y: (x + z) * SIN30 - y,
+  }
+}
+
+type IsoFace = {
+  origin: { x: number; y: number }
+  axisXEnd: { x: number; y: number }
+  axisYEnd: { x: number; y: number }
+  depth: number
+  brightness: number
+}
+
+/** Render custom geometry as isometric projection */
+function renderCustomGeometry(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  geometry: GeometryDef,
+  size: number,
+) {
+  const w = img.width
+  const h = img.height
+
+  // Collect all visible faces from all cubes
+  const faces: IsoFace[] = []
+
+  for (const cube of geometry.cubes) {
+    const [ox, oy, oz] = cube.origin
+    const [sx, sy, sz] = cube.size
+
+    // Top face (y+)
+    faces.push({
+      origin: isoProject(ox, oy + sy, oz),
+      axisXEnd: isoProject(ox + sx, oy + sy, oz),
+      axisYEnd: isoProject(ox, oy + sy, oz + sz),
+      depth: (ox + oz) - (oy + sy),
+      brightness: 1.0,
+    })
+
+    // Left face (z+ visible from our viewpoint)
+    faces.push({
+      origin: isoProject(ox, oy + sy, oz + sz),
+      axisXEnd: isoProject(ox + sx, oy + sy, oz + sz),
+      axisYEnd: isoProject(ox, oy, oz + sz),
+      depth: (ox) + (oz + sz) - oy,
+      brightness: 0.7,
+    })
+
+    // Right face (x+)
+    faces.push({
+      origin: isoProject(ox + sx, oy + sy, oz),
+      axisXEnd: isoProject(ox + sx, oy + sy, oz + sz),
+      axisYEnd: isoProject(ox + sx, oy, oz),
+      depth: (ox + sx) + oz - oy,
+      brightness: 0.55,
+    })
+  }
+
+  if (faces.length === 0) return
+
+  // Compute bounding box of all projected vertices
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  for (const face of faces) {
+    for (const v of [face.origin, face.axisXEnd, face.axisYEnd]) {
+      minX = Math.min(minX, v.x)
+      maxX = Math.max(maxX, v.x)
+      minY = Math.min(minY, v.y)
+      maxY = Math.max(maxY, v.y)
+    }
+    // Also check the fourth corner
+    const fourth = {
+      x: face.axisXEnd.x + (face.axisYEnd.x - face.origin.x),
+      y: face.axisXEnd.y + (face.axisYEnd.y - face.origin.y),
+    }
+    minX = Math.min(minX, fourth.x)
+    maxX = Math.max(maxX, fourth.x)
+    minY = Math.min(minY, fourth.y)
+    maxY = Math.max(maxY, fourth.y)
+  }
+
+  // Scale and offset to fit canvas with margin
+  const margin = size * 0.06
+  const availW = size - 2 * margin
+  const availH = size - 2 * margin
+  const rangeX = maxX - minX || 1
+  const rangeY = maxY - minY || 1
+  const scale = Math.min(availW / rangeX, availH / rangeY)
+  const offsetX = margin + (availW - rangeX * scale) / 2 - minX * scale
+  const offsetY = margin + (availH - rangeY * scale) / 2 - minY * scale
+
+  const transform = (p: { x: number; y: number }) => ({
+    x: p.x * scale + offsetX,
+    y: p.y * scale + offsetY,
+  })
+
+  // Sort by depth (furthest first = painter's algorithm)
+  faces.sort((a, b) => a.depth - b.depth)
+
+  // Draw each face
+  for (const face of faces) {
+    drawFace(
+      ctx, img, w, h,
+      transform(face.origin),
+      transform(face.axisXEnd),
+      transform(face.axisYEnd),
+      face.brightness,
+    )
+  }
 }
 
 /**
