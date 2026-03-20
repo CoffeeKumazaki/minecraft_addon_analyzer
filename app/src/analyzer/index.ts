@@ -15,6 +15,7 @@ import { resolveReferences } from './reference-resolver'
 import { generateSummary } from './summary-generator'
 import { extractTextureMap, type TextureMap } from './texture-extractor'
 import { parseGeometries, type GeometryMap } from './geometry-parser'
+import { parseLangFiles, resolveDisplayName } from './lang-parser'
 
 type ProgressCallback = (step: string, percent: number) => void
 
@@ -84,7 +85,26 @@ export async function analyzeAddon(
   onProgress?.('レシピを解析中...', 70)
   const recipes = analyzeRecipes(files, fileIndex.recipes)
 
-  // Step 5b: Merge RP client entity info (textures, geometry, animations)
+  // Step 5b: Parse lang files and apply display names
+  onProgress?.('テキストを解析中...', 71)
+  const langMap = parseLangFiles(files, packPaths)
+  for (const item of items) {
+    if (!item.title) {
+      item.title = resolveDisplayName(langMap, item.id, 'item')
+    }
+  }
+  for (const block of blocks) {
+    if (!block.title) {
+      block.title = resolveDisplayName(langMap, block.id, 'tile')
+    }
+  }
+  for (const entity of entities) {
+    if (!entity.title) {
+      entity.title = resolveDisplayName(langMap, entity.id, 'entity')
+    }
+  }
+
+  // Step 5c: Merge RP client entity info (textures, geometry, animations)
   onProgress?.('クライアントエンティティを統合中...', 72)
   mergeClientEntities(files, fileIndex.clientEntities, entities)
 

@@ -25,10 +25,7 @@ export function ItemDetail({ item, textureMap }: Props) {
           <div className="flex items-start gap-4">
             <TextureThumbnail src={iconSrc} size={64} />
             <div className="flex-1 min-w-0">
-              <CardTitle className="font-mono text-lg">{item.id}</CardTitle>
-              {item.title && (
-                <p className="text-sm text-muted-foreground mt-0.5">{item.title}</p>
-              )}
+              <CardTitle className="text-lg">{item.title ?? item.id}</CardTitle>
               {item.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {item.tags.map(tag => (
@@ -44,6 +41,10 @@ export function ItemDetail({ item, textureMap }: Props) {
       {/* Basic Info */}
       <SectionCard title="基本情報" icon={FileText}>
         <div className="space-y-2">
+          <div>
+            <h4 className="text-xs font-medium text-muted-foreground">ID</h4>
+            <p className="text-sm font-mono">{item.id}</p>
+          </div>
           <div>
             <h4 className="text-xs font-medium text-muted-foreground">ソースパス</h4>
             <p className="text-sm font-mono">{item.sourcePath}</p>

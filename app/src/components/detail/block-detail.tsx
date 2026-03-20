@@ -32,7 +32,7 @@ export function BlockDetail({ block, textureMap, geometryMap }: Props) {
               size={80}
             />
             <div className="flex-1 min-w-0">
-              <CardTitle className="font-mono text-lg">{block.id}</CardTitle>
+              <CardTitle className="text-lg">{block.title ?? block.id}</CardTitle>
               {block.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {block.tags.map(tag => (
@@ -47,9 +47,15 @@ export function BlockDetail({ block, textureMap, geometryMap }: Props) {
 
       {/* Basic Info */}
       <SectionCard title="基本情報" icon={FileText}>
-        <div>
-          <h4 className="text-xs font-medium text-muted-foreground">ソースパス</h4>
-          <p className="text-sm font-mono">{block.sourcePath}</p>
+        <div className="space-y-2">
+          <div>
+            <h4 className="text-xs font-medium text-muted-foreground">ID</h4>
+            <p className="text-sm font-mono">{block.id}</p>
+          </div>
+          <div>
+            <h4 className="text-xs font-medium text-muted-foreground">ソースパス</h4>
+            <p className="text-sm font-mono">{block.sourcePath}</p>
+          </div>
         </div>
       </SectionCard>
 

@@ -71,7 +71,7 @@ export function DetailTabs({ result }: Props) {
 }
 
 function ItemList({ items, search, textureMap }: { items: ItemSpec[]; search: string; textureMap: TextureMap | null }) {
-  const filtered = items.filter(i => i.id.toLowerCase().includes(search))
+  const filtered = items.filter(i => i.id.toLowerCase().includes(search) || (i.title?.toLowerCase().includes(search) ?? false))
   if (filtered.length === 0) return <EmptyState />
   return (
     <div className="space-y-1">
@@ -81,7 +81,10 @@ function ItemList({ items, search, textureMap }: { items: ItemSpec[]; search: st
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <TextureThumbnail src={item.icon ? textureMap?.get(item.icon) : undefined} />
-                <span className="font-mono text-sm">{item.id}</span>
+                <div>
+                  <span className="text-sm">{item.title ?? item.id}</span>
+                  {item.title && <span className="font-mono text-xs text-muted-foreground ml-2">{item.id}</span>}
+                </div>
               </div>
               <div className="flex gap-1">
                 {item.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
@@ -95,7 +98,7 @@ function ItemList({ items, search, textureMap }: { items: ItemSpec[]; search: st
 }
 
 function BlockList({ blocks, search, textureMap, geometryMap }: { blocks: BlockSpec[]; search: string; textureMap: TextureMap | null; geometryMap: GeometryMap | null }) {
-  const filtered = blocks.filter(b => b.id.toLowerCase().includes(search))
+  const filtered = blocks.filter(b => b.id.toLowerCase().includes(search) || (b.title?.toLowerCase().includes(search) ?? false))
   if (filtered.length === 0) return <EmptyState />
   return (
     <div className="space-y-1">
@@ -108,7 +111,10 @@ function BlockList({ blocks, search, textureMap, geometryMap }: { blocks: BlockS
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <BlockThumbnail src={block.textures[0] ? textureMap?.get(block.textures[0]) : undefined} geometry={geometry} />
-                  <span className="font-mono text-sm">{block.id}</span>
+                  <div>
+                    <span className="text-sm">{block.title ?? block.id}</span>
+                    {block.title && <span className="font-mono text-xs text-muted-foreground ml-2">{block.id}</span>}
+                  </div>
                 </div>
                 <div className="flex gap-1">
                   {block.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
@@ -123,7 +129,7 @@ function BlockList({ blocks, search, textureMap, geometryMap }: { blocks: BlockS
 }
 
 function EntityList({ entities, search, textureMap, geometryMap }: { entities: EntitySpec[]; search: string; textureMap: TextureMap | null; geometryMap: GeometryMap | null }) {
-  const filtered = entities.filter(e => e.id.toLowerCase().includes(search))
+  const filtered = entities.filter(e => e.id.toLowerCase().includes(search) || (e.title?.toLowerCase().includes(search) ?? false))
   if (filtered.length === 0) return <EmptyState />
   return (
     <div className="space-y-1">
@@ -138,7 +144,8 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
                 <div className="flex items-center gap-2">
                   <BlockThumbnail src={texSrc} geometry={geometry} />
                   <div>
-                    <span className="font-mono text-sm">{entity.id}</span>
+                    <span className="text-sm">{entity.title ?? entity.id}</span>
+                    {entity.title && <span className="font-mono text-xs text-muted-foreground ml-2">{entity.id}</span>}
                     {entity.health != null && (
                       <span className="text-xs text-muted-foreground ml-2">HP: {entity.health}</span>
                     )}

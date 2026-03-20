@@ -36,7 +36,7 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
           <div className="flex items-start gap-4">
             <BlockThumbnail src={texSrc} geometry={geometry} size={80} />
             <div className="flex-1 min-w-0">
-              <CardTitle className="font-mono text-lg">{entity.id}</CardTitle>
+              <CardTitle className="text-lg">{entity.title ?? entity.id}</CardTitle>
               <div className="flex flex-wrap gap-1 mt-2">
                 {entity.family && entity.family.map(f => (
                   <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
@@ -78,9 +78,15 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
 
       {/* Basic Info */}
       <SectionCard title="基本情報" icon={FileText}>
-        <div>
-          <h4 className="text-xs font-medium text-muted-foreground">ソースパス</h4>
-          <p className="text-sm font-mono">{entity.sourcePath}</p>
+        <div className="space-y-2">
+          <div>
+            <h4 className="text-xs font-medium text-muted-foreground">ID</h4>
+            <p className="text-sm font-mono">{entity.id}</p>
+          </div>
+          <div>
+            <h4 className="text-xs font-medium text-muted-foreground">ソースパス</h4>
+            <p className="text-sm font-mono">{entity.sourcePath}</p>
+          </div>
         </div>
       </SectionCard>
 

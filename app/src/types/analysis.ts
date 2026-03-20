@@ -65,6 +65,7 @@ export type ItemSpec = {
 
 export type BlockSpec = {
   id: string;
+  title?: string;
   sourcePath: string;
   tags: string[];
   textures: string[];
@@ -76,6 +77,7 @@ export type BlockSpec = {
 
 export type EntitySpec = {
   id: string;
+  title?: string;
   sourcePath: string;
   family?: string[];
   tags: string[];
