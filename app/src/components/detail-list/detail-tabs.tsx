@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
@@ -101,7 +101,7 @@ function BlockList({ blocks, search, textureMap }: { blocks: BlockSpec[]; search
           <Card className="p-3 hover:bg-muted/50 transition-colors">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <TextureThumbnail src={block.textures[0] ? textureMap?.get(block.textures[0]) : undefined} />
+                <BlockThumbnail src={block.textures[0] ? textureMap?.get(block.textures[0]) : undefined} />
                 <span className="font-mono text-sm">{block.id}</span>
               </div>
               <div className="flex gap-1">
@@ -188,6 +188,117 @@ function WarningList({ warnings, search }: { warnings: Diagnostic[]; search: str
       ))}
     </div>
   )
+}
+
+function BlockThumbnail({ src, size = 40 }: { src?: string; size?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !src) return
+
+    const img = new Image()
+    img.onload = () => {
+      const ctx = canvas.getContext('2d')!
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.imageSmoothingEnabled = false
+
+      const w = img.width
+      const h = img.height
+
+      // True isometric (30°): all edges appear equal length
+      const s = size * 0.42
+      const cx = size / 2
+      const xStep = s * Math.cos(Math.PI / 6) // s * 0.866
+      const yStep = s * Math.sin(Math.PI / 6) // s * 0.5
+      const sideH = s // vertical edge = edge length in true isometric
+      const topY = (size - (2 * yStep + sideH)) / 2
+
+      // Top face vertices
+      const top = { x: cx, y: topY }
+      const topRight = { x: cx + xStep, y: topY + yStep }
+      const topLeft = { x: cx - xStep, y: topY + yStep }
+      const center = { x: cx, y: topY + 2 * yStep }
+
+      // Bottom vertices (offset by sideH vertically)
+      const bottomLeft = { x: cx - xStep, y: topLeft.y + sideH }
+      const bottom = { x: cx, y: center.y + sideH }
+      const bottomRight = { x: cx + xStep, y: topRight.y + sideH }
+
+      // Draw top face
+      drawFace(ctx, img, w, h, top, topRight, topLeft, 1.0)
+
+      // Draw left face (darker)
+      drawFace(ctx, img, w, h, topLeft, center, bottomLeft, 0.7)
+
+      // Draw right face (darkest)
+      drawFace(ctx, img, w, h, center, topRight, bottom, 0.55)
+    }
+    img.src = src
+  }, [src, size])
+
+  if (!src) {
+    return (
+      <div
+        className="bg-muted rounded flex-shrink-0"
+        style={{ width: size, height: size }}
+      />
+    )
+  }
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={size}
+      height={size}
+      className="flex-shrink-0"
+      style={{ width: size, height: size, imageRendering: 'pixelated' }}
+    />
+  )
+}
+
+/**
+ * Draw one face of the isometric cube using affine transform.
+ * Maps the texture from (0,0)-(W,H) to the parallelogram defined by origin, axisX, axisY.
+ * origin = top-left of face, axisX end = top-right, axisY end = bottom-left.
+ */
+function drawFace(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  w: number, h: number,
+  origin: { x: number; y: number },
+  axisXEnd: { x: number; y: number },
+  axisYEnd: { x: number; y: number },
+  brightness: number,
+) {
+  ctx.save()
+
+  // Clip to the parallelogram
+  const fourth = { x: axisXEnd.x + (axisYEnd.x - origin.x), y: axisXEnd.y + (axisYEnd.y - origin.y) }
+  ctx.beginPath()
+  ctx.moveTo(origin.x, origin.y)
+  ctx.lineTo(axisXEnd.x, axisXEnd.y)
+  ctx.lineTo(fourth.x, fourth.y)
+  ctx.lineTo(axisYEnd.x, axisYEnd.y)
+  ctx.closePath()
+  ctx.clip()
+
+  // Affine transform: map image coords to canvas coords
+  const a = (axisXEnd.x - origin.x) / w
+  const b = (axisXEnd.y - origin.y) / w
+  const c = (axisYEnd.x - origin.x) / h
+  const d = (axisYEnd.y - origin.y) / h
+  ctx.setTransform(a, b, c, d, origin.x, origin.y)
+  ctx.drawImage(img, 0, 0)
+
+  // Apply brightness by overlaying semi-transparent black
+  if (brightness < 1) {
+    ctx.setTransform(a, b, c, d, origin.x, origin.y)
+    ctx.fillStyle = `rgba(0,0,0,${1 - brightness})`
+    ctx.fillRect(0, 0, w, h)
+  }
+
+  ctx.restore()
 }
 
 function TextureThumbnail({ src, size = 32 }: { src?: string; size?: number }) {
