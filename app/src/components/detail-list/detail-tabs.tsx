@@ -1,0 +1,189 @@
+import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
+import { AlertTriangle, Search } from 'lucide-react'
+import type { AnalysisResult, ItemSpec, BlockSpec, EntitySpec, RecipeSpec, Diagnostic } from '@/types'
+
+type Props = {
+  result: AnalysisResult;
+}
+
+export function DetailTabs({ result }: Props) {
+  const [search, setSearch] = useState('')
+  const lowerSearch = search.toLowerCase()
+
+  const tabs = useMemo(() => [
+    { key: 'items', label: `アイテム (${result.items.length})`, data: result.items },
+    { key: 'blocks', label: `ブロック (${result.blocks.length})`, data: result.blocks },
+    { key: 'entities', label: `モブ (${result.entities.length})`, data: result.entities },
+    { key: 'recipes', label: `レシピ (${result.recipes.length})`, data: result.recipes },
+    { key: 'warnings', label: `警告 (${result.warnings.length})`, data: result.warnings },
+  ], [result])
+
+  return (
+    <Tabs defaultValue="items">
+      <TabsList className="flex flex-wrap h-auto gap-1">
+        {tabs.map(tab => (
+          <TabsTrigger key={tab.key} value={tab.key} className="text-xs">
+            {tab.key === 'warnings' && <AlertTriangle className="h-3 w-3 mr-1" />}
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+
+      <div className="relative mt-3 mb-2">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="名前で検索..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
+      <TabsContent value="items">
+        <ItemList items={result.items} search={lowerSearch} />
+      </TabsContent>
+      <TabsContent value="blocks">
+        <BlockList blocks={result.blocks} search={lowerSearch} />
+      </TabsContent>
+      <TabsContent value="entities">
+        <EntityList entities={result.entities} search={lowerSearch} />
+      </TabsContent>
+      <TabsContent value="recipes">
+        <RecipeList recipes={result.recipes} search={lowerSearch} />
+      </TabsContent>
+      <TabsContent value="warnings">
+        <WarningList warnings={result.warnings} search={lowerSearch} />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+function ItemList({ items, search }: { items: ItemSpec[]; search: string }) {
+  const filtered = items.filter(i => i.id.toLowerCase().includes(search))
+  if (filtered.length === 0) return <EmptyState />
+  return (
+    <div className="space-y-1">
+      {filtered.map(item => (
+        <Link key={item.id} to={`/results/items/${encodeURIComponent(item.id)}`}>
+          <Card className="p-3 hover:bg-muted/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-sm">{item.id}</span>
+              <div className="flex gap-1">
+                {item.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+              </div>
+            </div>
+          </Card>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+function BlockList({ blocks, search }: { blocks: BlockSpec[]; search: string }) {
+  const filtered = blocks.filter(b => b.id.toLowerCase().includes(search))
+  if (filtered.length === 0) return <EmptyState />
+  return (
+    <div className="space-y-1">
+      {filtered.map(block => (
+        <Link key={block.id} to={`/results/blocks/${encodeURIComponent(block.id)}`}>
+          <Card className="p-3 hover:bg-muted/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-sm">{block.id}</span>
+              <div className="flex gap-1">
+                {block.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+              </div>
+            </div>
+          </Card>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+function EntityList({ entities, search }: { entities: EntitySpec[]; search: string }) {
+  const filtered = entities.filter(e => e.id.toLowerCase().includes(search))
+  if (filtered.length === 0) return <EmptyState />
+  return (
+    <div className="space-y-1">
+      {filtered.map(entity => (
+        <Link key={entity.id} to={`/results/entities/${encodeURIComponent(entity.id)}`}>
+          <Card className="p-3 hover:bg-muted/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-mono text-sm">{entity.id}</span>
+                {entity.health != null && (
+                  <span className="text-xs text-muted-foreground ml-2">HP: {entity.health}</span>
+                )}
+              </div>
+              <div className="flex gap-1 flex-wrap justify-end">
+                {entity.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+              </div>
+            </div>
+          </Card>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+function RecipeList({ recipes, search }: { recipes: RecipeSpec[]; search: string }) {
+  const filtered = recipes.filter(r =>
+    (r.id?.toLowerCase().includes(search)) ||
+    r.outputs.some(o => o.item.toLowerCase().includes(search))
+  )
+  if (filtered.length === 0) return <EmptyState />
+  return (
+    <div className="space-y-1">
+      {filtered.map((recipe, i) => (
+        <Link key={recipe.id ?? i} to={`/results/recipes/${encodeURIComponent(recipe.id ?? `recipe-${i}`)}`}>
+          <Card className="p-3 hover:bg-muted/50 transition-colors">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-mono text-sm">{recipe.id ?? '(unnamed)'}</span>
+                <span className="text-xs text-muted-foreground ml-2">{recipe.recipeType}</span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {recipe.inputs.map(io => io.item).join(', ')} → {recipe.outputs.map(io => io.item).join(', ')}
+              </div>
+            </div>
+          </Card>
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+function WarningList({ warnings, search }: { warnings: Diagnostic[]; search: string }) {
+  const filtered = warnings.filter(w => w.message.toLowerCase().includes(search) || (w.path?.toLowerCase().includes(search) ?? false))
+  if (filtered.length === 0) return <EmptyState message="警告はありません" />
+  return (
+    <div className="space-y-1">
+      {filtered.map((w, i) => (
+        <Card key={i} className="p-3">
+          <div className="flex items-start gap-2">
+            <Badge variant={w.level === 'error' ? 'destructive' : w.level === 'warning' ? 'outline' : 'secondary'} className="text-xs shrink-0">
+              {w.level}
+            </Badge>
+            <div>
+              <p className="text-sm">{w.message}</p>
+              {w.path && <p className="text-xs text-muted-foreground font-mono">{w.path}</p>}
+            </div>
+          </div>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+function EmptyState({ message = '該当する要素はありません' }: { message?: string }) {
+  return (
+    <div className="py-8 text-center text-sm text-muted-foreground">
+      {message}
+    </div>
+  )
+}
