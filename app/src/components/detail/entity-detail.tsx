@@ -7,9 +7,9 @@ import { TextureThumbnail, BlockThumbnail } from './shared/thumbnails'
 import {
   FileText, Link2, AlertTriangle, Heart, Zap,
   Brain, Calendar, Layers, Image,
-  Clapperboard, Scroll, MapPin,
+  Clapperboard, Scroll, MapPin, Egg,
 } from 'lucide-react'
-import type { EntitySpec } from '@/types'
+import type { EntitySpec, SpawnEggInfo } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
 
@@ -21,6 +21,52 @@ type Props = {
 
 function stripMinecraft(s: string): string {
   return s.replace(/^minecraft:/, '')
+}
+
+function SpawnEggDisplay({ spawnEgg, textureMap }: { spawnEgg: SpawnEggInfo; textureMap: TextureMap | null }) {
+  const texSrc = spawnEgg.texture ? textureMap?.get(spawnEgg.texture) : undefined
+
+  return (
+    <div className="flex items-center gap-4">
+      {/* Egg visual */}
+      {texSrc ? (
+        <TextureThumbnail src={texSrc} size={48} />
+      ) : (spawnEgg.baseColor || spawnEgg.overlayColor) ? (
+        <svg width="48" height="48" viewBox="0 0 48 48" className="shrink-0">
+          <ellipse cx="24" cy="26" rx="14" ry="18" fill={spawnEgg.baseColor ?? '#A0A0A0'} />
+          <ellipse cx="24" cy="18" rx="10" ry="10" fill={spawnEgg.overlayColor ?? '#707070'} opacity="0.7" />
+          <ellipse cx="20" cy="14" rx="3" ry="3" fill={spawnEgg.overlayColor ?? '#707070'} opacity="0.5" />
+          <ellipse cx="28" cy="22" rx="2" ry="2" fill={spawnEgg.overlayColor ?? '#707070'} opacity="0.5" />
+        </svg>
+      ) : (
+        <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+          <Egg className="h-6 w-6 text-muted-foreground" />
+        </div>
+      )}
+
+      {/* Info */}
+      <div className="space-y-1 text-sm">
+        <p className="font-medium">スポーンエッグあり</p>
+        {spawnEgg.texture && (
+          <p className="text-xs text-muted-foreground">テクスチャ: <span className="font-mono">{spawnEgg.texture}</span></p>
+        )}
+        {spawnEgg.baseColor && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            ベースカラー:
+            <span className="inline-block w-4 h-4 rounded border" style={{ backgroundColor: spawnEgg.baseColor }} />
+            <span className="font-mono">{spawnEgg.baseColor}</span>
+          </div>
+        )}
+        {spawnEgg.overlayColor && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            オーバーレイカラー:
+            <span className="inline-block w-4 h-4 rounded border" style={{ backgroundColor: spawnEgg.overlayColor }} />
+            <span className="font-mono">{spawnEgg.overlayColor}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
@@ -73,6 +119,13 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
               </div>
             )}
           </div>
+        </SectionCard>
+      )}
+
+      {/* Spawn Egg */}
+      {entity.spawnEgg && (
+        <SectionCard title="スポーンエッグ" icon={Egg}>
+          <SpawnEggDisplay spawnEgg={entity.spawnEgg} textureMap={textureMap} />
         </SectionCard>
       )}
 

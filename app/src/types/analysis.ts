@@ -76,6 +76,13 @@ export type BlockSpec = {
   diagnostics: Diagnostic[];
 };
 
+export type SpawnEggInfo = {
+  texture?: string;
+  textureIndex?: number;
+  baseColor?: string;
+  overlayColor?: string;
+};
+
 export type EntitySpec = {
   id: string;
   title?: string;
@@ -84,6 +91,7 @@ export type EntitySpec = {
   tags: string[];
   health?: number;
   movement?: number;
+  spawnEgg?: SpawnEggInfo;
   behaviors: string[];
   events: string[];
   componentGroups: string[];

@@ -6,6 +6,7 @@ import { ItemDetail } from '@/components/detail/item-detail'
 import { BlockDetail } from '@/components/detail/block-detail'
 import { EntityDetail } from '@/components/detail/entity-detail'
 import { RecipeDetail } from '@/components/detail/recipe-detail'
+import { useRecipeLookup, useRecipeTextureMap } from '@/hooks/use-recipe-lookup'
 import type { AnalysisResult } from '@/types'
 
 function findEntity(result: AnalysisResult, category: string, id: string) {
@@ -47,6 +48,8 @@ export function DetailPage() {
   }
 
   const { textureMap, geometryMap } = state
+  const recipeLookup = useRecipeLookup(state.result.recipes)
+  const recipeTextureMap = useRecipeTextureMap(textureMap, state.result.items, state.result.blocks)
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-4">
@@ -58,16 +61,16 @@ export function DetailPage() {
       </Button>
 
       {found.kind === 'item' && (
-        <ItemDetail item={found.data} textureMap={textureMap} />
+        <ItemDetail item={found.data} textureMap={textureMap} recipeTextureMap={recipeTextureMap} recipeLookup={recipeLookup} />
       )}
       {found.kind === 'block' && (
-        <BlockDetail block={found.data} textureMap={textureMap} geometryMap={geometryMap} />
+        <BlockDetail block={found.data} textureMap={textureMap} recipeTextureMap={recipeTextureMap} geometryMap={geometryMap} recipeLookup={recipeLookup} />
       )}
       {found.kind === 'entity' && (
         <EntityDetail entity={found.data} textureMap={textureMap} geometryMap={geometryMap} />
       )}
       {found.kind === 'recipe' && (
-        <RecipeDetail recipe={found.data} textureMap={textureMap} />
+        <RecipeDetail recipe={found.data} textureMap={recipeTextureMap} />
       )}
     </div>
   )

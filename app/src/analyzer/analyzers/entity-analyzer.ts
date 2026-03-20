@@ -1,4 +1,4 @@
-import type { VirtualFS, EntitySpec, ReferenceLink } from '@/types'
+import type { VirtualFS, EntitySpec, ReferenceLink, SpawnEggInfo } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
 
 /**
@@ -81,8 +81,20 @@ function extractEntity(root: Record<string, unknown>, sourcePath: string): Entit
   }
 
   // Spawn egg
-  const spawnEgg = desc.is_spawnable ?? desc.spawn_egg
-  const hasSpawnEgg = spawnEgg != null
+  const spawnEggRaw = desc.spawn_egg as Record<string, unknown> | boolean | undefined
+  const isSpawnable = desc.is_spawnable
+  const hasSpawnEgg = spawnEggRaw != null || isSpawnable != null
+
+  let spawnEgg: SpawnEggInfo | undefined
+  if (hasSpawnEgg) {
+    spawnEgg = {}
+    if (typeof spawnEggRaw === 'object' && spawnEggRaw !== null) {
+      if (typeof spawnEggRaw.texture === 'string') spawnEgg.texture = spawnEggRaw.texture
+      if (typeof spawnEggRaw.texture_index === 'number') spawnEgg.textureIndex = spawnEggRaw.texture_index
+      if (typeof spawnEggRaw.base_color === 'string') spawnEgg.baseColor = spawnEggRaw.base_color
+      if (typeof spawnEggRaw.overlay_color === 'string') spawnEgg.overlayColor = spawnEggRaw.overlay_color
+    }
+  }
 
   // Extract textures/geometries/animations from description
   const textures: string[] = []
@@ -120,6 +132,7 @@ function extractEntity(root: Record<string, unknown>, sourcePath: string): Entit
     tags,
     health,
     movement,
+    spawnEgg,
     behaviors,
     events: Object.keys(events),
     componentGroups: Object.keys(componentGroups),

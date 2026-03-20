@@ -143,6 +143,44 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/* Minecraft crafting UI */
+.mc-slot {
+  width: 36px;
+  height: 36px;
+  background: #8B8B8B;
+  box-shadow: inset -2px -2px 0 #555555, inset 2px 2px 0 #C6C6C6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-slot-output {
+  width: 44px;
+  height: 44px;
+  background: #8B8B8B;
+  box-shadow: inset -2px -2px 0 #555555, inset 2px 2px 0 #C6C6C6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mc-grid {
+  background: #C6C6C6;
+  padding: 4px;
+  gap: 2px;
+  display: inline-grid;
+}
+
+.mc-furnace-slot {
+  width: 36px;
+  height: 36px;
+  background: #8B8B8B;
+  box-shadow: inset -2px -2px 0 #555555, inset 2px 2px 0 #C6C6C6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

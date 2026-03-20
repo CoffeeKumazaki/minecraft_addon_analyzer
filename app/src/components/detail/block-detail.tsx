@@ -5,7 +5,9 @@ import { ReferenceList } from './shared/reference-list'
 import { DiagnosticList } from './shared/diagnostic-list'
 import { ComponentTable } from './shared/component-table'
 import { BlockThumbnail, TextureThumbnail } from './shared/thumbnails'
-import { FileText, Link2, AlertTriangle, Boxes, Image, ToggleLeft } from 'lucide-react'
+import { RecipeCard } from './shared/recipe-diagrams'
+import { FileText, Link2, AlertTriangle, Boxes, Image, ToggleLeft, ChefHat, ArrowRightFromLine } from 'lucide-react'
+import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
 import type { BlockSpec } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
@@ -13,12 +15,16 @@ import type { GeometryMap } from '@/analyzer/geometry-parser'
 type Props = {
   block: BlockSpec
   textureMap: TextureMap | null
+  recipeTextureMap: TextureMap | null
   geometryMap: GeometryMap | null
+  recipeLookup: RecipeLookup | null
 }
 
-export function BlockDetail({ block, textureMap, geometryMap }: Props) {
+export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, recipeLookup }: Props) {
   const geoRef = block.references.find(r => r.kind === 'geometry')
   const geometry = geoRef ? geometryMap?.get(geoRef.target) : undefined
+  const obtainRecipes = recipeLookup ? lookupRecipesForId(recipeLookup, block.id, 'output') : []
+  const usedInRecipes = recipeLookup ? lookupRecipesForId(recipeLookup, block.id, 'input') : []
 
   return (
     <div className="space-y-4">
@@ -88,6 +94,28 @@ export function BlockDetail({ block, textureMap, geometryMap }: Props) {
       {Object.keys(block.components).length > 0 && (
         <SectionCard title="コンポーネント" icon={Boxes} badge={`${Object.keys(block.components).length}`}>
           <ComponentTable components={block.components} />
+        </SectionCard>
+      )}
+
+      {/* How to Obtain (入手方法) */}
+      {obtainRecipes.length > 0 && (
+        <SectionCard title="入手方法" icon={ChefHat} badge={`${obtainRecipes.length}`}>
+          <div className="space-y-3">
+            {obtainRecipes.map((recipe, i) => (
+              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} />
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Used In (使用先) */}
+      {usedInRecipes.length > 0 && (
+        <SectionCard title="使用先" icon={ArrowRightFromLine} badge={`${usedInRecipes.length}`}>
+          <div className="space-y-3">
+            {usedInRecipes.map((recipe, i) => (
+              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} />
+            ))}
+          </div>
         </SectionCard>
       )}
 
