@@ -1,5 +1,5 @@
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useAnalysisContext } from '@/context/analysis-context'
+import { useEffect } from 'react'
+import { useParams, Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 import { ItemDetail } from '@/components/detail/item-detail'
@@ -7,6 +7,7 @@ import { BlockDetail } from '@/components/detail/block-detail'
 import { EntityDetail } from '@/components/detail/entity-detail'
 import { RecipeDetail } from '@/components/detail/recipe-detail'
 import { useRecipeLookup, useRecipeTextureMap } from '@/hooks/use-recipe-lookup'
+import { useRequireAnalysis } from '@/hooks/use-require-analysis'
 import type { AnalysisResult } from '@/types'
 
 function findEntity(result: AnalysisResult, category: string, id: string) {
@@ -26,11 +27,19 @@ function findEntity(result: AnalysisResult, category: string, id: string) {
 
 export function DetailPage() {
   const { category, id } = useParams<{ category: string; id: string }>()
-  const { state } = useAnalysisContext()
-  const navigate = useNavigate()
+  const state = useRequireAnalysis()
 
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [category, id])
+
+  // All hooks must be called unconditionally (before any early returns)
+  const { textureMap, geometryMap } = state
+  const recipeLookup = useRecipeLookup(state.result?.recipes ?? [])
+  const recipeTextureMap = useRecipeTextureMap(textureMap, state.result?.items ?? [], state.result?.blocks ?? [])
+
+  // Synchronous guard: render nothing until redirect fires
   if (!state.result || !category || !id) {
-    navigate('/')
     return null
   }
 
@@ -46,10 +55,6 @@ export function DetailPage() {
       </div>
     )
   }
-
-  const { textureMap, geometryMap } = state
-  const recipeLookup = useRecipeLookup(state.result.recipes)
-  const recipeTextureMap = useRecipeTextureMap(textureMap, state.result.items, state.result.blocks)
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-4">
