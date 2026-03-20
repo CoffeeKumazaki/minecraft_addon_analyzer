@@ -12,6 +12,7 @@ import { applyItemTags } from './tagging/item-rules'
 import { applyBlockTags } from './tagging/block-rules'
 import { resolveReferences } from './reference-resolver'
 import { generateSummary } from './summary-generator'
+import { extractTextureMap, type TextureMap } from './texture-extractor'
 
 type ProgressCallback = (step: string, percent: number) => void
 
@@ -22,7 +23,7 @@ type ProgressCallback = (step: string, percent: number) => void
 export async function analyzeAddon(
   file: File,
   onProgress?: ProgressCallback,
-): Promise<AnalysisResult> {
+): Promise<{ result: AnalysisResult; textureMap: TextureMap }> {
   const allDiagnostics: Diagnostic[] = []
 
   // Step 1: Extract ZIP
@@ -104,25 +105,32 @@ export async function analyzeAddon(
   for (const entity of entities) allDiagnostics.push(...entity.diagnostics)
   for (const recipe of recipes) allDiagnostics.push(...recipe.diagnostics)
 
-  // Step 8: Generate summary
+  // Step 8: Extract textures
+  onProgress?.('テクスチャを抽出中...', 85)
+  const textureMap = extractTextureMap(files, packPaths)
+
+  // Step 9: Generate summary
   onProgress?.('サマリーを生成中...', 90)
   const summary: SummarySpec = generateSummary(addon, items, blocks, entities, recipes, allDiagnostics)
 
   onProgress?.('完了', 100)
 
   return {
-    addon,
-    packs,
-    items,
-    blocks,
-    entities,
-    recipes,
-    lootTables: [],
-    spawnRules: [],
-    trades: [],
-    scripts: [],
-    assets: [],
-    warnings: allDiagnostics,
-    summary,
+    result: {
+      addon,
+      packs,
+      items,
+      blocks,
+      entities,
+      recipes,
+      lootTables: [],
+      spawnRules: [],
+      trades: [],
+      scripts: [],
+      assets: [],
+      warnings: allDiagnostics,
+      summary,
+    },
+    textureMap,
   }
 }

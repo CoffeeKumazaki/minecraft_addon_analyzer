@@ -43,7 +43,19 @@ function extractItem(root: Record<string, unknown>, sourcePath: string): ItemSpe
   if (typeof iconComp === 'string') {
     icon = iconComp
   } else if (iconComp && typeof iconComp === 'object') {
-    icon = String(iconComp.texture ?? iconComp.value ?? '')
+    // Try multiple formats:
+    // { texture: "name" }
+    // { value: "name" }
+    // { textures: "name" }
+    // { textures: { default: "name" } }
+    const textures = iconComp.textures
+    if (typeof textures === 'string') {
+      icon = textures
+    } else if (textures && typeof textures === 'object') {
+      icon = String((textures as Record<string, unknown>).default ?? '')
+    } else {
+      icon = String(iconComp.texture ?? iconComp.value ?? '')
+    }
   }
 
   // Build references

@@ -1,5 +1,6 @@
 import { createContext, useContext, useReducer, type ReactNode } from 'react'
 import type { AnalysisResult } from '@/types'
+import type { TextureMap } from '@/analyzer/texture-extractor'
 
 type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error'
 
@@ -7,6 +8,7 @@ type AnalysisState = {
   status: AnalysisStatus;
   fileName: string | null;
   result: AnalysisResult | null;
+  textureMap: TextureMap | null;
   error: string | null;
   progress: { step: string; percent: number } | null;
 }
@@ -14,7 +16,7 @@ type AnalysisState = {
 type AnalysisAction =
   | { type: 'START_ANALYSIS'; fileName: string }
   | { type: 'SET_PROGRESS'; step: string; percent: number }
-  | { type: 'SET_RESULT'; result: AnalysisResult }
+  | { type: 'SET_RESULT'; result: AnalysisResult; textureMap: TextureMap }
   | { type: 'SET_ERROR'; error: string }
   | { type: 'RESET' }
 
@@ -22,6 +24,7 @@ const initialState: AnalysisState = {
   status: 'idle',
   fileName: null,
   result: null,
+  textureMap: null,
   error: null,
   progress: null,
 }
@@ -33,10 +36,15 @@ function analysisReducer(state: AnalysisState, action: AnalysisAction): Analysis
     case 'SET_PROGRESS':
       return { ...state, progress: { step: action.step, percent: action.percent } }
     case 'SET_RESULT':
-      return { ...state, status: 'success', result: action.result, progress: null }
+      return { ...state, status: 'success', result: action.result, textureMap: action.textureMap, progress: null }
     case 'SET_ERROR':
       return { ...state, status: 'error', error: action.error, progress: null }
     case 'RESET':
+      if (state.textureMap) {
+        for (const url of state.textureMap.values()) {
+          URL.revokeObjectURL(url)
+        }
+      }
       return initialState
     default:
       return state

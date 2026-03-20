@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { AlertTriangle, Search } from 'lucide-react'
+import { useAnalysisContext } from '@/context/analysis-context'
+import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { AnalysisResult, ItemSpec, BlockSpec, EntitySpec, RecipeSpec, Diagnostic } from '@/types'
 
 type Props = {
@@ -12,6 +14,8 @@ type Props = {
 }
 
 export function DetailTabs({ result }: Props) {
+  const { state } = useAnalysisContext()
+  const textureMap = state.textureMap
   const [search, setSearch] = useState('')
   const lowerSearch = search.toLowerCase()
 
@@ -45,10 +49,10 @@ export function DetailTabs({ result }: Props) {
       </div>
 
       <TabsContent value="items">
-        <ItemList items={result.items} search={lowerSearch} />
+        <ItemList items={result.items} search={lowerSearch} textureMap={textureMap} />
       </TabsContent>
       <TabsContent value="blocks">
-        <BlockList blocks={result.blocks} search={lowerSearch} />
+        <BlockList blocks={result.blocks} search={lowerSearch} textureMap={textureMap} />
       </TabsContent>
       <TabsContent value="entities">
         <EntityList entities={result.entities} search={lowerSearch} />
@@ -63,7 +67,7 @@ export function DetailTabs({ result }: Props) {
   )
 }
 
-function ItemList({ items, search }: { items: ItemSpec[]; search: string }) {
+function ItemList({ items, search, textureMap }: { items: ItemSpec[]; search: string; textureMap: TextureMap | null }) {
   const filtered = items.filter(i => i.id.toLowerCase().includes(search))
   if (filtered.length === 0) return <EmptyState />
   return (
@@ -72,7 +76,10 @@ function ItemList({ items, search }: { items: ItemSpec[]; search: string }) {
         <Link key={item.id} to={`/results/items/${encodeURIComponent(item.id)}`}>
           <Card className="p-3 hover:bg-muted/50 transition-colors">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-sm">{item.id}</span>
+              <div className="flex items-center gap-2">
+                <TextureThumbnail src={item.icon ? textureMap?.get(item.icon) : undefined} />
+                <span className="font-mono text-sm">{item.id}</span>
+              </div>
               <div className="flex gap-1">
                 {item.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
               </div>
@@ -84,7 +91,7 @@ function ItemList({ items, search }: { items: ItemSpec[]; search: string }) {
   )
 }
 
-function BlockList({ blocks, search }: { blocks: BlockSpec[]; search: string }) {
+function BlockList({ blocks, search, textureMap }: { blocks: BlockSpec[]; search: string; textureMap: TextureMap | null }) {
   const filtered = blocks.filter(b => b.id.toLowerCase().includes(search))
   if (filtered.length === 0) return <EmptyState />
   return (
@@ -93,7 +100,10 @@ function BlockList({ blocks, search }: { blocks: BlockSpec[]; search: string }) 
         <Link key={block.id} to={`/results/blocks/${encodeURIComponent(block.id)}`}>
           <Card className="p-3 hover:bg-muted/50 transition-colors">
             <div className="flex items-center justify-between">
-              <span className="font-mono text-sm">{block.id}</span>
+              <div className="flex items-center gap-2">
+                <TextureThumbnail src={block.textures[0] ? textureMap?.get(block.textures[0]) : undefined} />
+                <span className="font-mono text-sm">{block.id}</span>
+              </div>
               <div className="flex gap-1">
                 {block.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
               </div>
@@ -177,6 +187,25 @@ function WarningList({ warnings, search }: { warnings: Diagnostic[]; search: str
         </Card>
       ))}
     </div>
+  )
+}
+
+function TextureThumbnail({ src, size = 32 }: { src?: string; size?: number }) {
+  if (!src) {
+    return (
+      <div
+        className="bg-muted rounded flex-shrink-0"
+        style={{ width: size, height: size }}
+      />
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      className="flex-shrink-0 rounded"
+      style={{ width: size, height: size, imageRendering: 'pixelated' }}
+    />
   )
 }
 

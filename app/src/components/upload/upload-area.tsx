@@ -25,10 +25,10 @@ export function UploadArea() {
     dispatch({ type: 'START_ANALYSIS', fileName: file.name })
 
     try {
-      const result = await analyzeAddon(file, (step, percent) => {
+      const { result, textureMap } = await analyzeAddon(file, (step, percent) => {
         dispatch({ type: 'SET_PROGRESS', step, percent })
       })
-      dispatch({ type: 'SET_RESULT', result })
+      dispatch({ type: 'SET_RESULT', result, textureMap })
       navigate('/results')
     } catch (e) {
       dispatch({ type: 'SET_ERROR', error: e instanceof Error ? e.message : '解析に失敗しました' })
