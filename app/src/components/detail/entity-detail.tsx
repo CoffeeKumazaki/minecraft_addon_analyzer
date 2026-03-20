@@ -80,7 +80,9 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
       <Card>
         <CardHeader>
           <div className="flex items-start gap-4">
-            <BlockThumbnail src={texSrc} geometry={geometry} size={80} />
+            {geometry
+              ? <BlockThumbnail src={texSrc} geometry={geometry} size={80} />
+              : <TextureThumbnail src={texSrc} size={80} />}
             <div className="flex-1 min-w-0">
               <CardTitle className="text-lg">{entity.title ?? entity.id}</CardTitle>
               <div className="flex flex-wrap gap-1 mt-2">

@@ -144,7 +144,9 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
             <Card className="p-3 hover:bg-muted/50 transition-colors">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <BlockThumbnail src={texSrc} geometry={geometry} />
+                  {geometry
+                    ? <BlockThumbnail src={texSrc} geometry={geometry} />
+                    : <TextureThumbnail src={texSrc} />}
                   <div>
                     <span className="text-sm">{entity.title ?? entity.id}</span>
                     {entity.title && <span className="font-mono text-xs text-muted-foreground ml-2">{entity.id}</span>}
