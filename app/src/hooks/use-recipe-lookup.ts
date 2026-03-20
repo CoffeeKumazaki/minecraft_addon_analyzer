@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import type { RecipeSpec, ItemSpec, BlockSpec } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
+import { loadVanillaTextureMap } from '@/lib/vanilla-sprites'
 
 export type RecipeLookup = {
   outputRecipes: Map<string, RecipeSpec[]>
@@ -50,41 +51,55 @@ export function lookupRecipesForId(
 }
 
 /**
- * Build an augmented texture map that resolves recipe item IDs to texture blob URLs.
- * Combines the raw textureMap with item/block ID → icon/texture mappings.
+ * Build an augmented texture map that resolves recipe item IDs to texture URLs.
+ * Combines: addon textureMap + item/block ID mappings + vanilla GitHub textures.
  */
 export function useRecipeTextureMap(
   textureMap: TextureMap | null,
   items: ItemSpec[],
   blocks: BlockSpec[],
 ): TextureMap | null {
+  const [vanillaMap, setVanillaMap] = useState<Map<string, string> | null>(null)
+
+  useEffect(() => {
+    loadVanillaTextureMap().then(setVanillaMap)
+  }, [])
+
   return useMemo(() => {
     if (!textureMap) return null
 
-    const combined = new Map(textureMap)
+    const combined = new Map<string, string>()
 
-    // Map item IDs to their icon textures
+    // 1. Vanilla textures as base layer (lowest priority)
+    if (vanillaMap) {
+      for (const [k, v] of vanillaMap) combined.set(k, v)
+    }
+
+    // 2. Addon textureMap (overrides vanilla)
+    for (const [k, v] of textureMap) combined.set(k, v)
+
+    // 3. Map item IDs to their icon textures (highest priority)
     for (const item of items) {
       if (item.icon) {
-        const blobUrl = textureMap.get(item.icon)
-        if (blobUrl) {
-          combined.set(item.id, blobUrl)
-          combined.set(normalizeId(item.id), blobUrl)
+        const url = textureMap.get(item.icon)
+        if (url) {
+          combined.set(item.id, url)
+          combined.set(normalizeId(item.id), url)
         }
       }
     }
 
-    // Map block IDs to their first texture
+    // 4. Map block IDs to their first texture
     for (const block of blocks) {
       if (block.textures[0]) {
-        const blobUrl = textureMap.get(block.textures[0])
-        if (blobUrl) {
-          combined.set(block.id, blobUrl)
-          combined.set(normalizeId(block.id), blobUrl)
+        const url = textureMap.get(block.textures[0])
+        if (url) {
+          combined.set(block.id, url)
+          combined.set(normalizeId(block.id), url)
         }
       }
     }
 
     return combined
-  }, [textureMap, items, blocks])
+  }, [textureMap, items, blocks, vanillaMap])
 }

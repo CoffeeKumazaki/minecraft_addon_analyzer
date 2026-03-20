@@ -20,6 +20,17 @@ function resolveTexture(textureMap: TextureMap | null, itemId: string): string |
   return textureMap.get(itemId) ?? textureMap.get(itemId.replace(/^[a-z_]+:/i, ''))
 }
 
+/** Resolve item texture: textureMap (includes addon + vanilla) → text fallback */
+function ItemIcon({ itemId, textureMap, size }: { itemId: string; textureMap: TextureMap | null; size: number }) {
+  const texSrc = resolveTexture(textureMap, itemId)
+  if (texSrc) return <TextureThumbnail src={texSrc} size={size} />
+  return (
+    <span className="text-[8px] text-white/80 text-center leading-tight break-all px-0.5">
+      {itemId.replace(/^[a-z_]+:/i, '')}
+    </span>
+  )
+}
+
 function McArrow() {
   return (
     <svg width="24" height="16" viewBox="0 0 24 16" className="shrink-0 mx-1">
@@ -30,32 +41,18 @@ function McArrow() {
 }
 
 function McSlot({ io, textureMap, size = 32 }: { io?: RecipeIO; textureMap: TextureMap | null; size?: number }) {
-  const texSrc = io ? resolveTexture(textureMap, io.item) : undefined
   return (
     <div className="mc-slot" title={io?.item}>
-      {io && (
-        texSrc
-          ? <TextureThumbnail src={texSrc} size={size} />
-          : <span className="text-[8px] text-white/80 text-center leading-tight break-all px-0.5">
-              {io.item.replace(/^[a-z_]+:/i, '')}
-            </span>
-      )}
+      {io && <ItemIcon itemId={io.item} textureMap={textureMap} size={size} />}
     </div>
   )
 }
 
 function McOutputSlot({ io, textureMap }: { io?: RecipeIO; textureMap: TextureMap | null }) {
-  const texSrc = io ? resolveTexture(textureMap, io.item) : undefined
   return (
     <div className="relative">
       <div className="mc-slot-output" title={io?.item}>
-        {io && (
-          texSrc
-            ? <TextureThumbnail src={texSrc} size={36} />
-            : <span className="text-[9px] text-white/80 text-center leading-tight break-all px-0.5">
-                {io.item.replace(/^[a-z_]+:/i, '')}
-              </span>
-        )}
+        {io && <ItemIcon itemId={io.item} textureMap={textureMap} size={36} />}
       </div>
       {io?.count != null && io.count > 1 && (
         <span className="absolute -bottom-0.5 -right-0.5 text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
@@ -67,10 +64,9 @@ function McOutputSlot({ io, textureMap }: { io?: RecipeIO; textureMap: TextureMa
 }
 
 export function RecipeIOBadge({ io, textureMap }: { io: RecipeIO; textureMap: TextureMap | null }) {
-  const texSrc = resolveTexture(textureMap, io.item)
   return (
     <div className="inline-flex items-center gap-1 bg-muted rounded-md px-2 py-1">
-      <TextureThumbnail src={texSrc} size={20} />
+      <ItemIcon itemId={io.item} textureMap={textureMap} size={20} />
       <span className="text-xs font-mono">{io.item}</span>
       {io.count != null && io.count > 1 && (
         <span className="text-xs text-muted-foreground">x{io.count}</span>
