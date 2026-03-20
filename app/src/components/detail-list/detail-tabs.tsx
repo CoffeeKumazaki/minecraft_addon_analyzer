@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -18,11 +18,15 @@ type Props = {
 
 export function DetailTabs({ result }: Props) {
   const { state } = useAnalysisContext()
+  const [searchParams, setSearchParams] = useSearchParams()
   const textureMap = state.textureMap
   const geometryMap = state.geometryMap
   const recipeTextureMap = useRecipeTextureMap(textureMap, result.items, result.blocks)
   const [search, setSearch] = useState('')
   const lowerSearch = search.toLowerCase()
+
+  const validTabs = ['items', 'blocks', 'entities', 'recipes', 'warnings']
+  const activeTab = validTabs.includes(searchParams.get('tab') ?? '') ? searchParams.get('tab')! : 'items'
 
   const tabs = useMemo(() => [
     { key: 'items', label: `アイテム (${result.items.length})`, data: result.items },
@@ -33,7 +37,7 @@ export function DetailTabs({ result }: Props) {
   ], [result])
 
   return (
-    <Tabs defaultValue="items">
+    <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
       <TabsList className="flex flex-wrap h-auto gap-1">
         {tabs.map(tab => (
           <TabsTrigger key={tab.key} value={tab.key} className="text-xs">
