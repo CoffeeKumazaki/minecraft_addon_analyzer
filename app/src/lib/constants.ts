@@ -27,4 +27,4 @@ export const MODULE_TYPE_MAP: Record<string, 'behavior' | 'resource' | 'script'>
 }
 
 /** Accepted file extensions */
-export const ACCEPTED_EXTENSIONS = ['.mcaddon', '.mcpack', '.zip']
+export const ACCEPTED_EXTENSIONS = ['.mcaddon', '.mcpack', '.mcworld', '.zip']

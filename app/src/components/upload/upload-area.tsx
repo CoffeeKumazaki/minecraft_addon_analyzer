@@ -4,7 +4,7 @@ import { useAnalysisContext } from '@/context/analysis-context'
 import { analyzeAddon } from '@/analyzer'
 import { Upload, FileArchive, Loader2 } from 'lucide-react'
 
-const ACCEPTED_EXTENSIONS = ['.mcaddon', '.mcpack', '.zip']
+const ACCEPTED_EXTENSIONS = ['.mcaddon', '.mcpack', '.mcworld', '.zip']
 
 function isAcceptedFile(file: File): boolean {
   return ACCEPTED_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext))
@@ -18,7 +18,7 @@ export function UploadArea() {
 
   const handleFile = useCallback(async (file: File) => {
     if (!isAcceptedFile(file)) {
-      dispatch({ type: 'SET_ERROR', error: '対応していないファイル形式です。.mcaddon, .mcpack, .zip に対応しています。' })
+      dispatch({ type: 'SET_ERROR', error: '対応していないファイル形式です。.mcaddon, .mcpack, .mcworld, .zip に対応しています。' })
       return
     }
 
@@ -106,7 +106,7 @@ export function UploadArea() {
         <input
           ref={inputRef}
           type="file"
-          accept=".mcaddon,.mcpack,.zip"
+          accept=".mcaddon,.mcpack,.mcworld,.zip"
           onChange={onFileSelect}
           className="hidden"
         />

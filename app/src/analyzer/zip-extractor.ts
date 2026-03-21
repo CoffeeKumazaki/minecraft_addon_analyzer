@@ -4,6 +4,7 @@ import type { VirtualFS, Diagnostic } from '@/types'
 /**
  * Extract a ZIP file into a VirtualFS.
  * Handles .mcaddon files that contain nested .mcpack ZIPs.
+ * Handles .mcworld files by skipping db/ and level.dat (memory optimization).
  * Includes path traversal protection.
  */
 export async function extractZip(
@@ -12,6 +13,7 @@ export async function extractZip(
 ): Promise<{ files: VirtualFS; diagnostics: Diagnostic[] }> {
   const diagnostics: Diagnostic[] = []
   const vfs: VirtualFS = new Map()
+  const isMcworld = file.name.toLowerCase().endsWith('.mcworld')
 
   onProgress?.('ZIP を展開中...', 10)
 
@@ -44,6 +46,9 @@ export async function extractZip(
       })
       continue
     }
+
+    // Skip large/unnecessary files in .mcworld archives
+    if (isMcworld && shouldSkipMcworldEntry(path)) continue
 
     try {
       const data = await entry.async('uint8array')
@@ -114,4 +119,13 @@ function normalizePath(path: string): string {
 function isUnsafePath(path: string): boolean {
   const segments = path.split('/')
   return segments.some(s => s === '..') || path.startsWith('/')
+}
+
+const MCWORLD_SKIP_PREFIXES = ['db/']
+const MCWORLD_SKIP_FILES = ['level.dat', 'level.dat_old']
+
+function shouldSkipMcworldEntry(path: string): boolean {
+  const lower = path.toLowerCase()
+  return MCWORLD_SKIP_PREFIXES.some(p => lower.startsWith(p))
+    || MCWORLD_SKIP_FILES.some(f => lower === f)
 }

@@ -11,7 +11,7 @@ export function UploadPage() {
       </p>
       <UploadArea />
       <p className="text-xs text-muted-foreground mt-4">
-        .mcaddon, .mcpack, .zip に対応
+        .mcaddon, .mcpack, .mcworld, .zip に対応
       </p>
     </div>
   )

@@ -38,6 +38,12 @@ export async function analyzeAddon(
   const { packs: packRoots, diagnostics: packDiags } = detectPacks(files)
   allDiagnostics.push(...packDiags)
 
+  const isMcworld = file.name.toLowerCase().endsWith('.mcworld')
+
+  if (packRoots.length === 0 && isMcworld) {
+    throw new Error('この .mcworld ファイルにはアドオン（behavior_packs / resource_packs）が含まれていません。')
+  }
+
   // Step 3: Parse manifests
   onProgress?.('マニフェストを解析中...', 40)
   const packs = packRoots.map(p => parseManifest(p))
@@ -59,7 +65,16 @@ export async function analyzeAddon(
     if (pack.minEngineVersion) minEngineVersion = pack.minEngineVersion
   }
 
-  const rawName = packs[0]?.name || file.name.replace(/\.(mcaddon|mcpack|zip)$/i, '')
+  // For .mcworld, try to read the world name from levelname.txt
+  let worldName: string | undefined
+  if (isMcworld) {
+    const levelnameData = files.get('levelname.txt')
+    if (levelnameData) {
+      worldName = new TextDecoder().decode(levelnameData).trim()
+    }
+  }
+
+  const rawName = packs[0]?.name || worldName || file.name.replace(/\.(mcaddon|mcpack|mcworld|zip)$/i, '')
   const cleanName = rawName.replace(/\s*\[.*?\]\s*/g, '').trim() || rawName
 
   const headerDesc = (packRoots[0]?.manifest?.header as Record<string, unknown> | undefined)?.description
@@ -72,12 +87,18 @@ export async function analyzeAddon(
     dependencies: allDeps,
   }
 
-  // Extract pack icon (use first available)
+  // Extract pack icon (use first available, fallback to world_icon.jpeg for .mcworld)
   for (const packPath of packPaths) {
     const iconData = files.get(packPath + 'pack_icon.png')
     if (iconData) {
       addon.iconUrl = URL.createObjectURL(new Blob([iconData], { type: 'image/png' }))
       break
+    }
+  }
+  if (!addon.iconUrl && isMcworld) {
+    const worldIcon = files.get('world_icon.jpeg')
+    if (worldIcon) {
+      addon.iconUrl = URL.createObjectURL(new Blob([worldIcon], { type: 'image/jpeg' }))
     }
   }
 
