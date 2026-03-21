@@ -21,24 +21,32 @@ type ProgressCallback = (step: string, percent: number) => void
 
 /**
  * Main analysis pipeline orchestrator.
- * Takes a File and returns a complete AnalysisResult.
+ * Takes a File or File[] and returns a complete AnalysisResult.
+ * When multiple files are given, their VFS are merged before analysis.
  */
 export async function analyzeAddon(
-  file: File,
+  inputFiles: File | File[],
   onProgress?: ProgressCallback,
 ): Promise<{ result: AnalysisResult; textureMap: TextureMap; geometryMap: GeometryMap }> {
   const allDiagnostics: Diagnostic[] = []
+  const fileList = Array.isArray(inputFiles) ? inputFiles : [inputFiles]
 
-  // Step 1: Extract ZIP
-  const { files, diagnostics: zipDiags } = await extractZip(file, onProgress)
-  allDiagnostics.push(...zipDiags)
+  // Step 1: Extract all ZIP files and merge into single VFS
+  const files: VirtualFS = new Map()
+  for (const file of fileList) {
+    const { files: extracted, diagnostics: zipDiags } = await extractZip(file, onProgress)
+    allDiagnostics.push(...zipDiags)
+    for (const [path, data] of extracted) {
+      files.set(path, data)
+    }
+  }
 
   // Step 2: Detect packs
   onProgress?.('パックを検出中...', 35)
   const { packs: packRoots, diagnostics: packDiags } = detectPacks(files)
   allDiagnostics.push(...packDiags)
 
-  const isMcworld = file.name.toLowerCase().endsWith('.mcworld')
+  const isMcworld = fileList.some(f => f.name.toLowerCase().endsWith('.mcworld'))
 
   if (packRoots.length === 0 && isMcworld) {
     throw new Error('この .mcworld ファイルにはアドオン（behavior_packs / resource_packs）が含まれていません。')
@@ -74,7 +82,7 @@ export async function analyzeAddon(
     }
   }
 
-  const rawName = packs[0]?.name || worldName || file.name.replace(/\.(mcaddon|mcpack|mcworld|zip)$/i, '')
+  const rawName = packs[0]?.name || worldName || fileList[0].name.replace(/\.(mcaddon|mcpack|mcworld|zip)$/i, '')
   const cleanName = rawName.replace(/\s*\[.*?\]\s*/g, '').trim() || rawName
 
   const headerDesc = (packRoots[0]?.manifest?.header as Record<string, unknown> | undefined)?.description

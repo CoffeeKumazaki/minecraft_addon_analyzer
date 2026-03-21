@@ -22,7 +22,7 @@ export function UploadArea() {
       return
     }
 
-    dispatch({ type: 'START_ANALYSIS', fileName: file.name })
+    dispatch({ type: 'START_ANALYSIS', fileName: file.name, files: [file] })
 
     try {
       const { result, textureMap, geometryMap } = await analyzeAddon(file, (step, percent) => {

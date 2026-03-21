@@ -8,6 +8,7 @@ type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error'
 type AnalysisState = {
   status: AnalysisStatus;
   fileName: string | null;
+  files: File[];
   result: AnalysisResult | null;
   textureMap: TextureMap | null;
   geometryMap: GeometryMap | null;
@@ -16,15 +17,16 @@ type AnalysisState = {
 }
 
 type AnalysisAction =
-  | { type: 'START_ANALYSIS'; fileName: string }
+  | { type: 'START_ANALYSIS'; fileName: string; files: File[] }
   | { type: 'SET_PROGRESS'; step: string; percent: number }
-  | { type: 'SET_RESULT'; result: AnalysisResult; textureMap: TextureMap; geometryMap: GeometryMap }
+  | { type: 'SET_RESULT'; result: AnalysisResult; textureMap: TextureMap; geometryMap: GeometryMap; files?: File[] }
   | { type: 'SET_ERROR'; error: string }
   | { type: 'RESET' }
 
 const initialState: AnalysisState = {
   status: 'idle',
   fileName: null,
+  files: [],
   result: null,
   textureMap: null,
   geometryMap: null,
@@ -35,11 +37,21 @@ const initialState: AnalysisState = {
 function analysisReducer(state: AnalysisState, action: AnalysisAction): AnalysisState {
   switch (action.type) {
     case 'START_ANALYSIS':
-      return { ...initialState, status: 'loading', fileName: action.fileName }
+      return { ...initialState, status: 'loading', fileName: action.fileName, files: action.files }
     case 'SET_PROGRESS':
       return { ...state, progress: { step: action.step, percent: action.percent } }
-    case 'SET_RESULT':
-      return { ...state, status: 'success', result: action.result, textureMap: action.textureMap, geometryMap: action.geometryMap, progress: null }
+    case 'SET_RESULT': {
+      // Revoke old blob URLs when replacing results (e.g., merging second pack)
+      if (state.textureMap) {
+        for (const url of state.textureMap.values()) {
+          URL.revokeObjectURL(url)
+        }
+      }
+      if (state.result?.addon.iconUrl) {
+        URL.revokeObjectURL(state.result.addon.iconUrl)
+      }
+      return { ...state, status: 'success', result: action.result, textureMap: action.textureMap, geometryMap: action.geometryMap, progress: null, ...(action.files ? { files: action.files } : {}) }
+    }
     case 'SET_ERROR':
       return { ...state, status: 'error', error: action.error, progress: null }
     case 'RESET':
