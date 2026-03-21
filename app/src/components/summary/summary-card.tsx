@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Package, Box, Blocks, Bug, AlertTriangle, FileCode } from 'lucide-react'
+import { Package, Box, Blocks, Bug, FileCode } from 'lucide-react'
 import type { AnalysisResult } from '@/types'
 
 type Props = {
@@ -17,33 +17,23 @@ export function SummaryCard({ result, fileName }: Props) {
     { label: 'モブ', count: result.entities.length, icon: Bug },
   ]
 
-  const warningCount = result.warnings.length
-
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            {addon.iconUrl && (
-              <img
-                src={addon.iconUrl}
-                alt=""
-                className="h-12 w-12 rounded-md object-cover flex-shrink-0"
-              />
-            )}
-            <div>
-              <CardTitle className="text-xl">{addon.name || fileName || 'Add-on'}</CardTitle>
-              {addon.description && (
-                <p className="text-sm text-muted-foreground mt-1">{addon.description}</p>
-              )}
-            </div>
-          </div>
-          {warningCount > 0 && (
-            <Badge variant="destructive" className="flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" />
-              {warningCount}件の警告
-            </Badge>
+        <div className="flex items-center gap-3">
+          {addon.iconUrl && (
+            <img
+              src={addon.iconUrl}
+              alt=""
+              className="h-12 w-12 rounded-md object-cover flex-shrink-0"
+            />
           )}
+          <div>
+            <CardTitle className="text-xl">{addon.name || fileName || 'Add-on'}</CardTitle>
+            {addon.description && (
+              <p className="text-sm text-muted-foreground mt-1">{addon.description}</p>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

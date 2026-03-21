@@ -4,12 +4,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
-import { AlertTriangle, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useAnalysisContext } from '@/context/analysis-context'
 import { TextureThumbnail, BlockThumbnail } from '@/components/detail/shared/thumbnails'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
-import type { AnalysisResult, ItemSpec, BlockSpec, EntitySpec, Diagnostic } from '@/types'
+import type { AnalysisResult, ItemSpec, BlockSpec, EntitySpec } from '@/types'
 
 type Props = {
   result: AnalysisResult;
@@ -23,14 +23,13 @@ export function DetailTabs({ result }: Props) {
   const [search, setSearch] = useState('')
   const lowerSearch = search.toLowerCase()
 
-  const validTabs = ['items', 'blocks', 'entities', 'warnings']
+  const validTabs = ['items', 'blocks', 'entities']
   const activeTab = validTabs.includes(searchParams.get('tab') ?? '') ? searchParams.get('tab')! : 'items'
 
   const tabs = useMemo(() => [
     { key: 'items', label: `アイテム (${result.items.length})`, data: result.items },
     { key: 'blocks', label: `ブロック (${result.blocks.length})`, data: result.blocks },
     { key: 'entities', label: `モブ (${result.entities.length})`, data: result.entities },
-    { key: 'warnings', label: `警告 (${result.warnings.length})`, data: result.warnings },
   ], [result])
 
   return (
@@ -38,7 +37,6 @@ export function DetailTabs({ result }: Props) {
       <TabsList className="flex flex-wrap h-auto gap-1">
         {tabs.map(tab => (
           <TabsTrigger key={tab.key} value={tab.key} className="text-xs">
-            {tab.key === 'warnings' && <AlertTriangle className="h-3 w-3 mr-1" />}
             {tab.label}
           </TabsTrigger>
         ))}
@@ -62,9 +60,6 @@ export function DetailTabs({ result }: Props) {
       </TabsContent>
       <TabsContent value="entities">
         <EntityList entities={result.entities} search={lowerSearch} textureMap={textureMap} geometryMap={geometryMap} />
-      </TabsContent>
-      <TabsContent value="warnings">
-        <WarningList warnings={result.warnings} search={lowerSearch} />
       </TabsContent>
     </Tabs>
   )
@@ -165,27 +160,6 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
   )
 }
 
-function WarningList({ warnings, search }: { warnings: Diagnostic[]; search: string }) {
-  const filtered = warnings.filter(w => w.message.toLowerCase().includes(search) || (w.path?.toLowerCase().includes(search) ?? false))
-  if (filtered.length === 0) return <EmptyState message="警告はありません" />
-  return (
-    <div className="space-y-1">
-      {filtered.map((w, i) => (
-        <Card key={i} className="p-3">
-          <div className="flex items-start gap-2">
-            <Badge variant={w.level === 'error' ? 'destructive' : w.level === 'warning' ? 'outline' : 'secondary'} className="text-xs shrink-0">
-              {w.level}
-            </Badge>
-            <div>
-              <p className="text-sm">{w.message}</p>
-              {w.path && <p className="text-xs text-muted-foreground font-mono">{w.path}</p>}
-            </div>
-          </div>
-        </Card>
-      ))}
-    </div>
-  )
-}
 
 function EmptyState({ message = '該当する要素はありません' }: { message?: string }) {
   return (
