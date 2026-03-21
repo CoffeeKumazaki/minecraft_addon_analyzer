@@ -1,9 +1,10 @@
 import { useSearchParams } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Package, FileCode, Box, Blocks, Bug } from 'lucide-react'
+import { Package, FileCode, Box, Blocks, Bug, ChefHat, Skull, Drumstick, Swords } from 'lucide-react'
 import type { AnalysisResult } from '@/types'
 import type { LucideIcon } from 'lucide-react'
+import { useLanguage, formatCount } from '@/context/language-context'
 
 type Props = {
   result: AnalysisResult;
@@ -14,12 +15,22 @@ export function SummaryCard({ result, fileName }: Props) {
   const { addon, summary } = result
   const [searchParams, setSearchParams] = useSearchParams()
   const activeTab = searchParams.get('tab') ?? 'items'
+  const { t, language } = useLanguage()
 
   const counts: { label: string; count: number; tab: string; icon: LucideIcon }[] = [
     { label: 'ITEMS', count: result.items.length, tab: 'items', icon: Box },
     { label: 'BLOCKS', count: result.blocks.length, tab: 'blocks', icon: Blocks },
     { label: 'ENTITIES', count: result.entities.length, tab: 'entities', icon: Bug },
   ]
+
+  const detailBadges: { key: string; count: number; labelKey: string; unitType: 'items' | 'mobs'; icon: LucideIcon; className: string }[] = [
+    { key: 'recipes', count: summary.detailCounts.recipes, labelKey: 'badge.recipes', unitType: 'items', icon: ChefHat, className: 'bg-secondary' },
+    { key: 'hostile', count: summary.detailCounts.hostileMobs, labelKey: 'badge.hostileMobs', unitType: 'mobs', icon: Skull, className: 'bg-destructive/10 text-destructive' },
+    { key: 'food', count: summary.detailCounts.foodItems, labelKey: 'badge.foodItems', unitType: 'items', icon: Drumstick, className: 'bg-success/10 text-success' },
+    { key: 'weapons', count: summary.detailCounts.weapons, labelKey: 'badge.weapons', unitType: 'items', icon: Swords, className: 'bg-accent/10 text-accent' },
+  ]
+
+  const hasDetailBadges = detailBadges.some(b => b.count > 0) || summary.scriptUsage
 
   return (
     <Card className="border-2 border-border">
@@ -89,14 +100,29 @@ export function SummaryCard({ result, fileName }: Props) {
         {summary.contentFocus.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {summary.contentFocus.map(tag => (
-              <Badge key={tag} variant="secondary" className="font-heading text-[10px] font-semibold tracking-[1px] rounded-none">{tag}</Badge>
+              <Badge key={tag} variant="secondary" className="font-heading text-[10px] font-semibold tracking-[1px] rounded-none">{t(tag)}</Badge>
             ))}
           </div>
         )}
 
-        {/* Summary text */}
-        {summary.shortDescription && (
-          <p className="text-sm bg-secondary p-4">{summary.shortDescription}</p>
+        {/* Detail badges */}
+        {hasDetailBadges && (
+          <div className="flex flex-wrap gap-2">
+            {detailBadges.map(({ key, count, labelKey, unitType, icon: Icon, className }) =>
+              count > 0 && (
+                <span key={key} className={`inline-flex items-center gap-1.5 px-3 py-1.5 font-heading text-[11px] font-semibold tracking-[0.5px] ${className}`}>
+                  <Icon className="h-3.5 w-3.5" />
+                  {t(labelKey)} {formatCount(count, unitType, language)}
+                </span>
+              )
+            )}
+            {summary.scriptUsage && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-chart-5/10 text-chart-5 font-heading text-[11px] font-semibold tracking-[0.5px]">
+                <FileCode className="h-3.5 w-3.5" />
+                {t('badge.scriptUsage')}
+              </span>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

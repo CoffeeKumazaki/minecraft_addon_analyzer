@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Search } from 'lucide-react'
 import { useAnalysisContext } from '@/context/analysis-context'
+import { useLanguage } from '@/context/language-context'
 import { TextureThumbnail, BlockThumbnail } from '@/components/detail/shared/thumbnails'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
@@ -148,26 +149,26 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
 const TAG_COLORS: Record<string, string> = {
   weapon: 'bg-accent text-accent-foreground',
   tool: 'bg-success text-primary-foreground',
-  food: 'bg-destructive text-destructive-foreground',
-  armor: 'bg-chart-4 text-primary-foreground',
+  edible: 'bg-destructive text-destructive-foreground',
+  wearable: 'bg-chart-4 text-primary-foreground',
   hostile: 'bg-destructive text-destructive-foreground',
   passive: 'bg-success text-primary-foreground',
-  boss: 'bg-chart-5 text-primary-foreground',
 }
 
 function TagBadge({ tag }: { tag: string }) {
-  const lower = tag.toLowerCase()
-  const colorClass = Object.entries(TAG_COLORS).find(([k]) => lower.includes(k))?.[1]
+  const { t } = useLanguage()
+  const colorClass = TAG_COLORS[tag]
+  const label = t(tag).toUpperCase()
   if (colorClass) {
     return (
       <span className={`inline-flex items-center px-2.5 py-0.5 font-heading text-[9px] font-semibold tracking-[1px] ${colorClass}`}>
-        {tag.toUpperCase()}
+        {label}
       </span>
     )
   }
   return (
     <Badge variant="outline" className="font-heading text-[9px] font-semibold tracking-[1px] rounded-none border-border">
-      {tag.toUpperCase()}
+      {label}
     </Badge>
   )
 }

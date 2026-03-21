@@ -8,6 +8,7 @@ import {
   Clapperboard, Scroll, MapPin, Egg,
 } from 'lucide-react'
 import type { EntitySpec, SpawnEggInfo } from '@/types'
+import { useLanguage } from '@/context/language-context'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
 
@@ -74,6 +75,7 @@ function SpawnEggDisplay({ spawnEgg, textureMap }: { spawnEgg: SpawnEggInfo; tex
 }
 
 export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
+  const { t } = useLanguage()
   const texSrc = entity.textures[0] ? textureMap?.get(entity.textures[0]) : undefined
   const geoId = entity.geometries[0]
   const geometry = geoId ? geometryMap?.get(geoId) : undefined
@@ -93,7 +95,7 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
                 <Badge key={f} variant="outline" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none border-border py-0">{f.toUpperCase()}</Badge>
               ))}
               {entity.tags.map(tag => (
-                <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{tag.toUpperCase()}</Badge>
+                <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{t(tag).toUpperCase()}</Badge>
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground font-mono">

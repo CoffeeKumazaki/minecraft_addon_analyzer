@@ -8,6 +8,7 @@ import {
   Swords, Shield, Layers, Sparkles, Drumstick, Shirt, Flame,
   Crosshair, Timer, Gem, Hourglass,
 } from 'lucide-react'
+import { useLanguage } from '@/context/language-context'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
 import type { ItemSpec, ItemStats } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
@@ -36,6 +37,7 @@ function StatPill({ icon: Icon, iconColor, label, value }: { icon: React.Element
 }
 
 export function ItemDetail({ item, textureMap, recipeTextureMap, recipeLookup }: Props) {
+  const { t } = useLanguage()
   const iconSrc = item.icon ? textureMap?.get(item.icon) : undefined
   const obtainRecipes = recipeLookup ? lookupRecipesForId(recipeLookup, item.id, 'output') : []
   const usedInRecipes = recipeLookup ? lookupRecipesForId(recipeLookup, item.id, 'input') : []
@@ -50,7 +52,7 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, recipeLookup }:
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="font-heading text-xl font-bold tracking-[-1px]">{item.title ?? item.id}</h2>
               {item.tags.map(tag => (
-                <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{tag.toUpperCase()}</Badge>
+                <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{t(tag).toUpperCase()}</Badge>
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground font-mono">

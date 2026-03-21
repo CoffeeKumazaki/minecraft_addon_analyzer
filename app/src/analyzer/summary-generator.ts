@@ -14,12 +14,11 @@ export function generateSummary(
   const parts: string[] = []
   const contentFocus: string[] = []
 
-  // Determine content focus
-  if (items.length > 0) contentFocus.push('アイテム追加')
-  if (blocks.length > 0) contentFocus.push('ブロック追加')
-  if (entities.length > 0) contentFocus.push('モブ追加')
-  if (recipes.length > 0) contentFocus.push('レシピ追加')
-  if (addon.packTypes.includes('script')) contentFocus.push('Script使用')
+  // Determine content focus (exclude recipe/script — shown as badges)
+  // Use translation keys; UI translates at render time
+  if (items.length > 0) contentFocus.push('focus.items')
+  if (blocks.length > 0) contentFocus.push('focus.blocks')
+  if (entities.length > 0) contentFocus.push('focus.entities')
 
   // Build description
   const totalContent = items.length + blocks.length + entities.length
@@ -36,9 +35,9 @@ export function generateSummary(
   }
 
   // Characterize content
-  const hostileEntities = entities.filter(e => e.tags.includes('敵対的'))
-  const foodItems = items.filter(i => i.tags.includes('食べられる'))
-  const weaponItems = items.filter(i => i.tags.includes('武器'))
+  const hostileEntities = entities.filter(e => e.tags.includes('hostile'))
+  const foodItems = items.filter(i => i.tags.includes('edible'))
+  const weaponItems = items.filter(i => i.tags.includes('weapon'))
 
   if (hostileEntities.length > 0) {
     parts.push(`敵対的なモブが${hostileEntities.length}体含まれています。`)
@@ -73,5 +72,11 @@ export function generateSummary(
     contentFocus,
     gameplayImpact,
     scriptUsage,
+    detailCounts: {
+      recipes: recipes.length,
+      hostileMobs: hostileEntities.length,
+      foodItems: foodItems.length,
+      weapons: weaponItems.length,
+    },
   }
 }

@@ -8,20 +8,20 @@ type TagRule = {
 const rules: TagRule[] = [
   // Hostility
   {
-    tag: '敵対的',
+    tag: 'hostile',
     check: (e) => e.behaviors.some(b =>
       b.includes('nearest_attackable_target') ||
       b.includes('hurt_by_target')
     ),
   },
   {
-    tag: '中立',
+    tag: 'neutral',
     check: (e) =>
       e.behaviors.some(b => b.includes('hurt_by_target')) &&
       !e.behaviors.some(b => b.includes('nearest_attackable_target')),
   },
   {
-    tag: '友好的',
+    tag: 'passive',
     check: (e) =>
       !e.behaviors.some(b =>
         b.includes('nearest_attackable_target') ||
@@ -31,25 +31,25 @@ const rules: TagRule[] = [
 
   // Abilities
   {
-    tag: 'テイム可能',
+    tag: 'tameable',
     check: (e) => hasComponent(e, 'minecraft:tameable') || hasComponent(e, 'minecraft:tame'),
   },
   {
-    tag: '繁殖可能',
+    tag: 'breedable',
     check: (e) => hasComponent(e, 'minecraft:breedable'),
   },
   {
-    tag: 'ライド可能',
+    tag: 'rideable',
     check: (e) => hasComponent(e, 'minecraft:rideable'),
   },
   {
-    tag: '飛行',
+    tag: 'flying',
     check: (e) => e.behaviors.some(b =>
       b.includes('navigation.fly') || b.includes('navigation.hover')
     ) || hasComponent(e, 'minecraft:fly_speed'),
   },
   {
-    tag: '水中行動',
+    tag: 'aquatic',
     check: (e) => e.behaviors.some(b =>
       b.includes('navigation.swim') || b.includes('navigation.float')
     ) || hasComponent(e, 'minecraft:underwater_movement'),
@@ -57,13 +57,13 @@ const rules: TagRule[] = [
 
   // Combat
   {
-    tag: '遠距離攻撃',
+    tag: 'ranged',
     check: (e) => e.behaviors.some(b =>
       b.includes('ranged_attack') || b.includes('behavior.shoot')
     ) || hasComponent(e, 'minecraft:shooter'),
   },
   {
-    tag: '近接攻撃',
+    tag: 'melee',
     check: (e) => e.behaviors.some(b =>
       b.includes('melee_attack')
     ) || hasComponent(e, 'minecraft:attack'),
@@ -71,23 +71,23 @@ const rules: TagRule[] = [
 
   // Special
   {
-    tag: '成長段階あり',
+    tag: 'grows',
     check: (e) => hasComponent(e, 'minecraft:ageable') || hasComponent(e, 'minecraft:grow_crop'),
   },
   {
-    tag: '変身/形態変化',
+    tag: 'transforms',
     check: (e) => hasComponent(e, 'minecraft:transformation'),
   },
   {
-    tag: 'イベント駆動',
+    tag: 'event_driven',
     check: (e) => e.events.length > 5,
   },
   {
-    tag: 'スポーン条件あり',
+    tag: 'spawn_rules',
     check: (e) => e.spawnRules.length > 0,
   },
   {
-    tag: 'ルートテーブルあり',
+    tag: 'loot_table',
     check: (e) => e.lootTables.length > 0,
   },
 ]
@@ -102,8 +102,8 @@ export function applyEntityTags(entity: EntitySpec): string[] {
   for (const rule of rules) {
     if (rule.check(entity)) {
       // Avoid conflicting tags
-      if (rule.tag === '友好的' && tags.includes('敵対的')) continue
-      if (rule.tag === '中立' && tags.includes('敵対的')) continue
+      if (rule.tag === 'passive' && tags.includes('hostile')) continue
+      if (rule.tag === 'neutral' && tags.includes('hostile')) continue
       tags.push(rule.tag)
     }
   }

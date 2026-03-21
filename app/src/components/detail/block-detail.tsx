@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
 import type { BlockSpec, BlockStats } from '@/types'
+import { useLanguage } from '@/context/language-context'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
 
@@ -46,6 +47,7 @@ function MapColorPill({ color }: { color: string }) {
 }
 
 export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, recipeLookup }: Props) {
+  const { t } = useLanguage()
   const geoRef = block.references.find(r => r.kind === 'geometry')
   const geometry = geoRef ? geometryMap?.get(geoRef.target) : undefined
   const obtainRecipes = recipeLookup ? lookupRecipesForId(recipeLookup, block.id, 'output') : []
@@ -65,7 +67,7 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, 
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="font-heading text-xl font-bold tracking-[-1px]">{block.title ?? block.id}</h2>
               {block.tags.map(tag => (
-                <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{tag.toUpperCase()}</Badge>
+                <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{t(tag).toUpperCase()}</Badge>
               ))}
             </div>
             <p className="text-[11px] text-muted-foreground font-mono">

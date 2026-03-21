@@ -200,11 +200,19 @@ export type Diagnostic = {
   path?: string;
 };
 
+export type DetailCounts = {
+  recipes: number;
+  hostileMobs: number;
+  foodItems: number;
+  weapons: number;
+};
+
 export type SummarySpec = {
   shortDescription: string;
   contentFocus: string[];
   gameplayImpact: 'low' | 'medium' | 'high' | 'unknown';
   scriptUsage: boolean;
+  detailCounts: DetailCounts;
 };
 
 // Virtual file system type
