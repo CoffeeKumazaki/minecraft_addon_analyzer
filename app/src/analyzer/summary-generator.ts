@@ -58,15 +58,6 @@ export function generateSummary(
     parts.push('Script API を使用しており、JSON だけでは全体挙動を完全には把握できません。')
   }
 
-  // Warnings
-  const errorCount = diagnostics.filter(d => d.level === 'error').length
-  const warningCount = diagnostics.filter(d => d.level === 'warning').length
-  if (errorCount > 0) {
-    parts.push(`${errorCount}件のエラーが検出されました。`)
-  } else if (warningCount > 0) {
-    parts.push(`${warningCount}件の警告があります。`)
-  }
-
   // Determine gameplay impact
   let gameplayImpact: SummarySpec['gameplayImpact'] = 'unknown'
   if (entities.length > 0 || scriptUsage) {

@@ -2,11 +2,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { SectionCard } from './shared/section-card'
 import { ReferenceList } from './shared/reference-list'
-import { DiagnosticList } from './shared/diagnostic-list'
 import { BlockThumbnail, TextureThumbnail } from './shared/thumbnails'
 import { RecipeCard } from './shared/recipe-diagrams'
 import {
-  FileText, Link2, AlertTriangle, Image, ToggleLeft, ChefHat, ArrowRightFromLine,
+  FileText, Link2, Image, ToggleLeft, ChefHat, ArrowRightFromLine,
   Pickaxe, Shield, Sun, SunDim, Snowflake, Flame, Palette, Hammer,
 } from 'lucide-react'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
@@ -223,12 +222,6 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, 
         </SectionCard>
       )}
 
-      {/* Diagnostics */}
-      {block.diagnostics.length > 0 && (
-        <SectionCard title="警告" icon={AlertTriangle} badge={`${block.diagnostics.length}`}>
-          <DiagnosticList diagnostics={block.diagnostics} />
-        </SectionCard>
-      )}
     </div>
   )
 }

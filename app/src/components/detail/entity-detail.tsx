@@ -2,10 +2,9 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { SectionCard } from './shared/section-card'
 import { ReferenceList } from './shared/reference-list'
-import { DiagnosticList } from './shared/diagnostic-list'
 import { TextureThumbnail, BlockThumbnail } from './shared/thumbnails'
 import {
-  FileText, Link2, AlertTriangle, Heart, Zap,
+  FileText, Link2, Heart, Zap,
   Brain, Calendar, Layers, Image,
   Clapperboard, Scroll, MapPin, Egg,
 } from 'lucide-react'
@@ -274,12 +273,6 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
         </SectionCard>
       )}
 
-      {/* Diagnostics */}
-      {entity.diagnostics.length > 0 && (
-        <SectionCard title="警告" icon={AlertTriangle} badge={`${entity.diagnostics.length}`}>
-          <DiagnosticList diagnostics={entity.diagnostics} />
-        </SectionCard>
-      )}
     </div>
   )
 }

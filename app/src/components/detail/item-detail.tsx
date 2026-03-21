@@ -2,11 +2,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { SectionCard } from './shared/section-card'
 import { ReferenceList } from './shared/reference-list'
-import { DiagnosticList } from './shared/diagnostic-list'
 import { TextureThumbnail } from './shared/thumbnails'
 import { RecipeCard } from './shared/recipe-diagrams'
 import {
-  FileText, Link2, AlertTriangle, ChefHat, ArrowRightFromLine,
+  FileText, Link2, ChefHat, ArrowRightFromLine,
   Swords, Shield, Layers, Sparkles, Drumstick, Shirt, Flame,
   Crosshair, Timer, Gem, Hourglass,
 } from 'lucide-react'
@@ -220,12 +219,6 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, recipeLookup }:
         </SectionCard>
       )}
 
-      {/* Diagnostics */}
-      {item.diagnostics.length > 0 && (
-        <SectionCard title="警告" icon={AlertTriangle} badge={`${item.diagnostics.length}`}>
-          <DiagnosticList diagnostics={item.diagnostics} />
-        </SectionCard>
-      )}
     </div>
   )
 }
