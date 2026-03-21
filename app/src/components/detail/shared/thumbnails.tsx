@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react'
-import type { GeometryDef } from '@/analyzer/geometry-parser'
+import type { GeometryDef, GeometryCube, PerFaceUV } from '@/analyzer/geometry-parser'
 
 // Minecraft spawn egg base texture (16×16 grayscale egg silhouette with shading)
 const EGG_BASE_URL = 'data:image/webp;base64,UklGRsAAAABXRUJQVlA4TLMAAAAvn8AnEIXjRpIUaTw9/rUP7dIZgbMuHDMzmJDqOfj16CLmfwKCPzE1lDBfoE2HYRFqU89Pw35Tsg2LMIYS5gEuTW/hLPT8NOyHl/AV3sJTOA0JldDLm4XnkJzDddhv6uVpOAzX4aXpJuxPTKiEvt0yJKdwHNrEiRuhR9cPJyHZhv2JU5VCP45q2A/HYb9p/La1MPhoT60Vxh/dDL08Kk1T9cJa0+Dr+me2EtYmDn62f5YHBAA='
@@ -115,16 +115,21 @@ export function BlockThumbnail({ src, geometry, size = 40 }: { src?: string; geo
     const canvas = canvasRef.current
     if (!canvas || !src) return
 
+    const dpr = window.devicePixelRatio || 1
+    const res = Math.round(size * dpr)
+    canvas.width = res
+    canvas.height = res
+
     const img = new Image()
     img.onload = () => {
       const ctx = canvas.getContext('2d')!
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.clearRect(0, 0, res, res)
       ctx.imageSmoothingEnabled = false
 
       if (geometry && geometry.cubes.length > 0) {
-        renderCustomGeometry(ctx, img, geometry, size)
+        renderCustomGeometry(ctx, img, geometry, res)
       } else {
-        renderDefaultCube(ctx, img, size)
+        renderDefaultCube(ctx, img, res)
       }
     }
     img.src = src
@@ -142,10 +147,8 @@ export function BlockThumbnail({ src, geometry, size = 40 }: { src?: string; geo
   return (
     <canvas
       ref={canvasRef}
-      width={size}
-      height={size}
       className="flex-shrink-0"
-      style={{ width: size, height: size, imageRendering: 'pixelated' }}
+      style={{ width: size, height: size }}
     />
   )
 }
@@ -153,10 +156,59 @@ export function BlockThumbnail({ src, geometry, size = 40 }: { src?: string; geo
 const COS30 = Math.cos(Math.PI / 6)
 const SIN30 = Math.sin(Math.PI / 6)
 
-/** Render standard isometric cube */
+type UVRect = { su: number; sv: number; sw: number; sh: number }
+
+/**
+ * Resolve UV rect for a face from box UV layout.
+ * Bedrock box UV layout with origin [u,v] and cube size [sx,sy,sz]:
+ *   Top row (height=sz): Up face at (u+sz, v, sx, sz)
+ *   Bottom row (height=sy): East(u,v+sz,sz,sy) North(u+sz,v+sz,sx,sy) West(u+sz+sx,v+sz,sz,sy) South(u+2sz+sx,v+sz,sx,sy)
+ */
+function boxUV(u: number, v: number, sx: number, sy: number, sz: number, face: 'up' | 'south' | 'east'): UVRect {
+  switch (face) {
+    case 'up':    return { su: u + sz, sv: v, sw: sx, sh: sz }
+    case 'south': return { su: u + 2 * sz + sx, sv: v + sz, sw: sx, sh: sy }
+    case 'east':  return { su: u, sv: v + sz, sw: sz, sh: sy }
+  }
+}
+
+/** Resolve UV rect for a specific face of a cube */
+function resolveFaceUV(
+  cube: GeometryCube,
+  face: 'up' | 'south' | 'east',
+  imgW: number,
+  imgH: number,
+): UVRect {
+  const [sx, sy, sz] = cube.size
+
+  if (!cube.uv) {
+    return { su: 0, sv: 0, sw: imgW, sh: imgH }
+  }
+
+  if (Array.isArray(cube.uv)) {
+    return boxUV(cube.uv[0], cube.uv[1], sx, sy, sz, face)
+  }
+
+  // Per-face UV
+  const faceData = (cube.uv as PerFaceUV)[face]
+  if (faceData) {
+    let su = faceData.uv[0]
+    let sv = faceData.uv[1]
+    let sw = faceData.uvSize[0]
+    let sh = faceData.uvSize[1]
+    if (sw < 0) { su += sw; sw = -sw }
+    if (sh < 0) { sv += sh; sh = -sh }
+    return { su, sv, sw, sh }
+  }
+
+  return { su: 0, sv: 0, sw: imgW, sh: imgH }
+}
+
+/** Render standard isometric cube (no geometry — uses full texture per face) */
 function renderDefaultCube(ctx: CanvasRenderingContext2D, img: HTMLImageElement, size: number) {
   const w = img.width
   const h = img.height
+  const fullUV: UVRect = { su: 0, sv: 0, sw: w, sh: h }
   const s = size * 0.42
   const cx = size / 2
   const xStep = s * COS30
@@ -171,9 +223,9 @@ function renderDefaultCube(ctx: CanvasRenderingContext2D, img: HTMLImageElement,
   const bottomLeft = { x: cx - xStep, y: topLeft.y + sideH }
   const bottom = { x: cx, y: center.y + sideH }
 
-  drawFace(ctx, img, w, h, top, topRight, topLeft, 1.0)
-  drawFace(ctx, img, w, h, topLeft, center, bottomLeft, 0.7)
-  drawFace(ctx, img, w, h, center, topRight, bottom, 0.55)
+  drawFace(ctx, img, top, topRight, topLeft, 1.0, fullUV)
+  drawFace(ctx, img, topLeft, center, bottomLeft, 0.7, fullUV)
+  drawFace(ctx, img, center, topRight, bottom, 0.55, fullUV)
 }
 
 /** Project 3D point to 2D isometric coordinates */
@@ -190,9 +242,10 @@ type IsoFace = {
   axisYEnd: { x: number; y: number }
   depth: number
   brightness: number
+  uv: UVRect
 }
 
-/** Render custom geometry as isometric projection */
+/** Render custom geometry as isometric projection with UV mapping */
 function renderCustomGeometry(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
@@ -208,28 +261,34 @@ function renderCustomGeometry(
     const [ox, oy, oz] = cube.origin
     const [sx, sy, sz] = cube.size
 
+    // Top face (Up)
     faces.push({
       origin: isoProject(ox, oy + sy, oz),
       axisXEnd: isoProject(ox + sx, oy + sy, oz),
       axisYEnd: isoProject(ox, oy + sy, oz + sz),
       depth: (ox + oz) - (oy + sy),
       brightness: 1.0,
+      uv: resolveFaceUV(cube, 'up', w, h),
     })
 
+    // Left face (South, +Z)
     faces.push({
       origin: isoProject(ox, oy + sy, oz + sz),
       axisXEnd: isoProject(ox + sx, oy + sy, oz + sz),
       axisYEnd: isoProject(ox, oy, oz + sz),
       depth: (ox) + (oz + sz) - oy,
       brightness: 0.7,
+      uv: resolveFaceUV(cube, 'south', w, h),
     })
 
+    // Right face (East, +X)
     faces.push({
       origin: isoProject(ox + sx, oy + sy, oz),
       axisXEnd: isoProject(ox + sx, oy + sy, oz + sz),
       axisYEnd: isoProject(ox + sx, oy, oz),
       depth: (ox + sx) + oz - oy,
       brightness: 0.55,
+      uv: resolveFaceUV(cube, 'east', w, h),
     })
   }
 
@@ -271,27 +330,32 @@ function renderCustomGeometry(
 
   for (const face of faces) {
     drawFace(
-      ctx, img, w, h,
+      ctx, img,
       transform(face.origin),
       transform(face.axisXEnd),
       transform(face.axisYEnd),
       face.brightness,
+      face.uv,
     )
   }
 }
 
 /**
  * Draw one face of the isometric cube using affine transform.
+ * Uses UV rect to sample only the correct region of the texture.
  */
 function drawFace(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
-  w: number, h: number,
   origin: { x: number; y: number },
   axisXEnd: { x: number; y: number },
   axisYEnd: { x: number; y: number },
   brightness: number,
+  uv: UVRect,
 ) {
+  const { su, sv, sw, sh } = uv
+  if (sw <= 0 || sh <= 0) return
+
   ctx.save()
 
   const fourth = { x: axisXEnd.x + (axisYEnd.x - origin.x), y: axisXEnd.y + (axisYEnd.y - origin.y) }
@@ -303,17 +367,16 @@ function drawFace(
   ctx.closePath()
   ctx.clip()
 
-  const a = (axisXEnd.x - origin.x) / w
-  const b = (axisXEnd.y - origin.y) / w
-  const c = (axisYEnd.x - origin.x) / h
-  const d = (axisYEnd.y - origin.y) / h
+  const a = (axisXEnd.x - origin.x) / sw
+  const b = (axisXEnd.y - origin.y) / sw
+  const c = (axisYEnd.x - origin.x) / sh
+  const d = (axisYEnd.y - origin.y) / sh
   ctx.setTransform(a, b, c, d, origin.x, origin.y)
-  ctx.drawImage(img, 0, 0)
+  ctx.drawImage(img, su, sv, sw, sh, 0, 0, sw, sh)
 
   if (brightness < 1) {
-    ctx.setTransform(a, b, c, d, origin.x, origin.y)
     ctx.fillStyle = `rgba(0,0,0,${1 - brightness})`
-    ctx.fillRect(0, 0, w, h)
+    ctx.fillRect(0, 0, sw, sh)
   }
 
   ctx.restore()

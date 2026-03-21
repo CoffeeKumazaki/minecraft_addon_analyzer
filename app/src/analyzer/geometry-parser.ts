@@ -1,9 +1,16 @@
 import type { VirtualFS } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
 
+export type FaceUV = { uv: [number, number]; uvSize: [number, number] }
+
+export type PerFaceUV = {
+  north?: FaceUV; south?: FaceUV; east?: FaceUV; west?: FaceUV; up?: FaceUV; down?: FaceUV
+}
+
 export type GeometryCube = {
   origin: [number, number, number]
   size: [number, number, number]
+  uv?: [number, number] | PerFaceUV
 }
 
 export type GeometryDef = {
@@ -74,9 +81,28 @@ function extractCubesFromBones(bones: unknown[]): GeometryCube[] {
       const size = c.size
       if (!Array.isArray(origin) || origin.length < 3 || !Array.isArray(size) || size.length < 3) continue
 
+      let uv: [number, number] | PerFaceUV | undefined
+      if (Array.isArray(c.uv) && c.uv.length >= 2) {
+        uv = [Number(c.uv[0]), Number(c.uv[1])]
+      } else if (c.uv && typeof c.uv === 'object' && !Array.isArray(c.uv)) {
+        const perFace: PerFaceUV = {}
+        const uvObj = c.uv as Record<string, unknown>
+        for (const face of ['north', 'south', 'east', 'west', 'up', 'down'] as const) {
+          const fd = uvObj[face] as Record<string, unknown> | undefined
+          if (fd && Array.isArray(fd.uv) && Array.isArray(fd.uv_size)) {
+            perFace[face] = {
+              uv: [Number((fd.uv as number[])[0]), Number((fd.uv as number[])[1])],
+              uvSize: [Number((fd.uv_size as number[])[0]), Number((fd.uv_size as number[])[1])],
+            }
+          }
+        }
+        uv = perFace
+      }
+
       cubes.push({
         origin: [Number(origin[0]), Number(origin[1]), Number(origin[2])],
         size: [Number(size[0]), Number(size[1]), Number(size[2])],
+        uv,
       })
     }
   }
