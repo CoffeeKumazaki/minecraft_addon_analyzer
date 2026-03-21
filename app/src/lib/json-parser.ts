@@ -23,7 +23,8 @@ export function parseJsonSafe(text: string): { data: unknown; error?: string } {
     // Continue
   }
 
-  // Step 3: Strip single-line comments (// ...)
+  // Step 3: Strip comments (single-line // and block /* */)
+  cleaned = cleaned.replace(/\/\*[\s\S]*?\*\//g, '')
   cleaned = cleaned.replace(/\/\/.*$/gm, '')
 
   try {
