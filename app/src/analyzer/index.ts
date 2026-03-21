@@ -7,6 +7,7 @@ import { analyzeItems } from './analyzers/item-analyzer'
 import { analyzeBlocks } from './analyzers/block-analyzer'
 import { analyzeEntities } from './analyzers/entity-analyzer'
 import { analyzeRecipes } from './analyzers/recipe-analyzer'
+import { analyzeLootTables } from './analyzers/loot-table-analyzer'
 import { mergeClientEntities } from './analyzers/client-entity-merger'
 import { applyEntityTags } from './tagging/entity-rules'
 import { applyItemTags } from './tagging/item-rules'
@@ -127,6 +128,9 @@ export async function analyzeAddon(
   onProgress?.('レシピを解析中...', 70)
   const recipes = analyzeRecipes(files, fileIndex.recipes)
 
+  onProgress?.('ルートテーブルを解析中...', 71)
+  const lootTables = analyzeLootTables(files, fileIndex.lootTables)
+
   // Step 5b: Parse lang files and apply display names
   onProgress?.('テキストを解析中...', 71)
   const langMap = parseLangFiles(files, packPaths)
@@ -143,6 +147,25 @@ export async function analyzeAddon(
   for (const entity of entities) {
     if (!entity.title) {
       entity.title = resolveDisplayName(langMap, entity.id, 'entity')
+    }
+  }
+
+  // Step 5b2: Resolve loot drop item names
+  {
+    const nameMap = new Map<string, string>()
+    for (const item of items) {
+      if (item.title) nameMap.set(item.id, item.title)
+    }
+    for (const block of blocks) {
+      if (block.title) nameMap.set(block.id, block.title)
+    }
+    for (const lt of lootTables) {
+      for (const pool of lt.pools) {
+        for (const drop of pool.drops) {
+          const resolved = nameMap.get(drop.item) ?? resolveDisplayName(langMap, drop.item, 'item') ?? resolveDisplayName(langMap, drop.item, 'tile')
+          if (resolved) drop.title = resolved
+        }
+      }
     }
   }
 
@@ -194,7 +217,7 @@ export async function analyzeAddon(
       blocks,
       entities,
       recipes,
-      lootTables: [],
+      lootTables,
       spawnRules: [],
       trades: [],
       scripts: [],

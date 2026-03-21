@@ -67,7 +67,7 @@ export function DetailPage() {
         <BlockDetail block={found.data} textureMap={textureMap} recipeTextureMap={recipeTextureMap} geometryMap={geometryMap} recipeLookup={recipeLookup} />
       )}
       {found.kind === 'entity' && (
-        <EntityDetail entity={found.data} textureMap={textureMap} geometryMap={geometryMap} />
+        <EntityDetail entity={found.data} textureMap={textureMap} geometryMap={geometryMap} lootTables={state.result.lootTables} items={state.result.items} blocks={state.result.blocks} />
       )}
       {found.kind === 'recipe' && (
         <RecipeDetail recipe={found.data} textureMap={recipeTextureMap} />

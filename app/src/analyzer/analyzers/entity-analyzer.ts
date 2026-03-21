@@ -71,13 +71,26 @@ function extractEntity(root: Record<string, unknown>, sourcePath: string): Entit
   // Extract references
   const references: ReferenceLink[] = []
 
-  // Loot table references
+  // Loot table references (from components and component_groups)
   const lootTables: string[] = []
+  const addLootTable = (table: string) => {
+    if (!lootTables.includes(table)) {
+      lootTables.push(table)
+      references.push({ kind: 'loot_table', target: table, resolved: false })
+    }
+  }
   const lootComp = components['minecraft:loot'] as Record<string, unknown> | undefined
   if (lootComp?.table) {
-    const table = String(lootComp.table)
-    lootTables.push(table)
-    references.push({ kind: 'loot_table', target: table, resolved: false })
+    addLootTable(String(lootComp.table))
+  }
+  // Also check component_groups for additional loot tables
+  for (const cgVal of Object.values(componentGroups)) {
+    if (!cgVal || typeof cgVal !== 'object') continue
+    const cg = cgVal as Record<string, unknown>
+    const cgLoot = cg['minecraft:loot'] as Record<string, unknown> | undefined
+    if (cgLoot?.table) {
+      addLootTable(String(cgLoot.table))
+    }
   }
 
   // Spawn egg

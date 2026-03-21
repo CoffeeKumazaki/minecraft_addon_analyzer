@@ -149,9 +149,26 @@ export type RecipeIO = {
   data?: number;
 };
 
+export type LootTableDrop = {
+  item: string;
+  title?: string;       // resolved display name
+  chance: number;       // 0–1 probability within the pool
+  countMin: number;
+  countMax: number;
+  conditions: string[]; // pool-level conditions
+  functions: string[];  // entry-level function names
+};
+
+export type LootTablePool = {
+  rollsMin: number;
+  rollsMax: number;
+  conditions: string[];
+  drops: LootTableDrop[];
+};
+
 export type LootTableSpec = {
   sourcePath: string;
-  entries: string[];
+  pools: LootTablePool[];
   diagnostics: Diagnostic[];
 };
 

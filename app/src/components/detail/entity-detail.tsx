@@ -1,13 +1,13 @@
 import { Badge } from '@/components/ui/badge'
 import { SectionCard } from './shared/section-card'
 import { ReferenceList } from './shared/reference-list'
-import { TextureThumbnail, BlockThumbnail } from './shared/thumbnails'
+import { TextureThumbnail, BlockThumbnail, SpawnEggThumbnail } from './shared/thumbnails'
 import {
   Link2, Heart, Zap,
   Brain, Calendar, Layers, Image,
-  Clapperboard, Scroll, MapPin, Egg,
+  Clapperboard, Scroll, MapPin, Egg, Package,
 } from 'lucide-react'
-import type { EntitySpec, SpawnEggInfo } from '@/types'
+import type { EntitySpec, SpawnEggInfo, LootTableSpec, ItemSpec, BlockSpec } from '@/types'
 import { useLanguage } from '@/context/language-context'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
@@ -16,6 +16,9 @@ type Props = {
   entity: EntitySpec
   textureMap: TextureMap | null
   geometryMap: GeometryMap | null
+  lootTables?: LootTableSpec[]
+  items?: ItemSpec[]
+  blocks?: BlockSpec[]
 }
 
 function stripMinecraft(s: string): string {
@@ -39,12 +42,7 @@ function SpawnEggDisplay({ spawnEgg, textureMap }: { spawnEgg: SpawnEggInfo; tex
       {texSrc ? (
         <TextureThumbnail src={texSrc} size={48} />
       ) : (spawnEgg.baseColor || spawnEgg.overlayColor) ? (
-        <svg width="48" height="48" viewBox="0 0 48 48" className="shrink-0">
-          <ellipse cx="24" cy="26" rx="14" ry="18" fill={spawnEgg.baseColor ?? '#A0A0A0'} />
-          <ellipse cx="24" cy="18" rx="10" ry="10" fill={spawnEgg.overlayColor ?? '#707070'} opacity="0.7" />
-          <ellipse cx="20" cy="14" rx="3" ry="3" fill={spawnEgg.overlayColor ?? '#707070'} opacity="0.5" />
-          <ellipse cx="28" cy="22" rx="2" ry="2" fill={spawnEgg.overlayColor ?? '#707070'} opacity="0.5" />
-        </svg>
+        <SpawnEggThumbnail baseColor={spawnEgg.baseColor ?? '#A0A0A0'} overlayColor={spawnEgg.overlayColor} size={48} />
       ) : (
         <div className="w-12 h-12 bg-secondary flex items-center justify-center">
           <Egg className="h-6 w-6 text-muted-foreground" />
@@ -74,7 +72,132 @@ function SpawnEggDisplay({ spawnEgg, textureMap }: { spawnEgg: SpawnEggInfo; tex
   )
 }
 
-export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
+function formatPercent(value: number): string {
+  const pct = value * 100
+  if (pct >= 100) return '100%'
+  if (pct >= 10) return `${Math.round(pct)}%`
+  if (pct >= 1) return `${pct.toFixed(1)}%`
+  return `${pct.toFixed(2)}%`
+}
+
+function formatCount(min: number, max: number): string {
+  if (min === max) return `${min}`
+  return `${min}–${max}`
+}
+
+/** Humanize an item ID: "minecraft:diamond_sword" → "Diamond Sword" */
+function humanizeId(id: string): string {
+  const stripped = id.replace(/^(?:minecraft:|[^:]+:)/, '')
+  return stripped.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+}
+
+function resolveDropName(drop: { item: string; title?: string }): string {
+  if (drop.title) return drop.title
+  if (drop.item.startsWith('[table]')) return drop.item
+  return humanizeId(drop.item)
+}
+
+type LootDropsDisplayProps = {
+  entity: EntitySpec
+  lootTables: LootTableSpec[]
+  items?: ItemSpec[]
+  blocks?: BlockSpec[]
+  textureMap: TextureMap | null
+}
+
+function LootDropsDisplay({ entity, lootTables, items, blocks, textureMap }: LootDropsDisplayProps) {
+  // Build icon lookup: item id → texture short name
+  const iconMap = new Map<string, string>()
+  if (items) {
+    for (const item of items) {
+      if (item.icon) iconMap.set(item.id, item.icon)
+    }
+  }
+  if (blocks) {
+    for (const block of blocks) {
+      if (block.textures[0]) iconMap.set(block.id, block.textures[0])
+    }
+  }
+
+  // Find matching loot tables for this entity
+  const matchedTables = entity.lootTables
+    .map(ref => lootTables.find(lt => {
+      const refNorm = ref.replace(/\\/g, '/')
+      const srcNorm = lt.sourcePath.replace(/\\/g, '/')
+      return srcNorm.includes(refNorm) || srcNorm.endsWith(refNorm)
+    }))
+    .filter((lt): lt is LootTableSpec => lt != null)
+
+  if (matchedTables.length === 0) return null
+
+  return (
+    <div className="space-y-3">
+      {matchedTables.map((lt, ti) => (
+        <div key={ti}>
+          <p className="text-[10px] font-mono text-muted-foreground mb-2">{lt.sourcePath}</p>
+          {lt.pools.map((pool, pi) => (
+            <div key={pi} className="mb-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground">
+                  POOL {pi + 1}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  Rolls: {formatCount(pool.rollsMin, pool.rollsMax)}
+                </span>
+                {pool.conditions.length > 0 && (
+                  <span className="text-[10px] text-muted-foreground italic">
+                    ({pool.conditions.join(', ')})
+                  </span>
+                )}
+              </div>
+              {pool.drops.length > 0 ? (
+                <div className="border border-border-light">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border-light bg-secondary/50">
+                        <th className="text-left px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground">ITEM</th>
+                        <th className="text-right px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground w-20">CHANCE</th>
+                        <th className="text-right px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground w-20">COUNT</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pool.drops.map((drop, di) => {
+                        const icon = iconMap.get(drop.item)
+                        const texSrc = icon ? textureMap?.get(icon) : undefined
+                        return (
+                          <tr key={di} className="border-b border-border-light last:border-b-0">
+                            <td className="px-3 py-1.5">
+                              <div className="flex items-center gap-2">
+                                <TextureThumbnail src={texSrc} size={20} />
+                                <span className="text-xs">{resolveDropName(drop)}</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-1.5 text-right">
+                              <span className={`font-heading text-xs font-semibold ${drop.chance >= 0.5 ? 'text-success' : drop.chance >= 0.1 ? 'text-accent' : 'text-muted-foreground'}`}>
+                                {formatPercent(drop.chance)}
+                              </span>
+                            </td>
+                            <td className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground">
+                              {formatCount(drop.countMin, drop.countMax)}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">ドロップなし</p>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export function EntityDetail({ entity, textureMap, geometryMap, lootTables, items, blocks }: Props) {
   const { t } = useLanguage()
   const texSrc = entity.textures[0] ? textureMap?.get(entity.textures[0]) : undefined
   const geoId = entity.geometries[0]
@@ -116,6 +239,31 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
       {entity.spawnEgg && (
         <SectionCard title="Spawn Egg" icon={Egg}>
           <SpawnEggDisplay spawnEgg={entity.spawnEgg} textureMap={textureMap} />
+        </SectionCard>
+      )}
+
+      {/* Loot Drops */}
+      {entity.lootTables.length > 0 && (
+        <SectionCard title="Loot Drops" icon={Package} badge={`${entity.lootTables.length}`}>
+          {lootTables && lootTables.length > 0 ? (
+            <LootDropsDisplay entity={entity} lootTables={lootTables} items={items} blocks={blocks} textureMap={textureMap} />
+          ) : (
+            <div className="space-y-1">
+              {entity.lootTables.map(lt => {
+                const ref = entity.references.find(r => r.kind === 'loot_table' && r.target === lt)
+                return (
+                  <div key={lt} className="flex items-center gap-2 text-sm">
+                    {ref ? (
+                      ref.resolved
+                        ? <span className="text-success text-xs">&#x2713;</span>
+                        : <span className="text-destructive text-xs">&#x2717;</span>
+                    ) : null}
+                    <span className="font-mono text-xs">{lt}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </SectionCard>
       )}
 
@@ -197,27 +345,6 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
                       : <span className="text-destructive text-xs">&#x2717;</span>
                   ) : null}
                   <span className="font-mono text-xs">{anim}</span>
-                </div>
-              )
-            })}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Loot Tables */}
-      {entity.lootTables.length > 0 && (
-        <SectionCard title="Loot Tables" icon={Scroll} badge={`${entity.lootTables.length}`}>
-          <div className="space-y-1">
-            {entity.lootTables.map(lt => {
-              const ref = entity.references.find(r => r.kind === 'loot_table' && r.target === lt)
-              return (
-                <div key={lt} className="flex items-center gap-2 text-sm">
-                  {ref ? (
-                    ref.resolved
-                      ? <span className="text-success text-xs">&#x2713;</span>
-                      : <span className="text-destructive text-xs">&#x2717;</span>
-                  ) : null}
-                  <span className="font-mono text-xs">{lt}</span>
                 </div>
               )
             })}

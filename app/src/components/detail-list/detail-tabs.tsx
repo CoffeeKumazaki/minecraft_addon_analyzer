@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Search } from 'lucide-react'
 import { useAnalysisContext } from '@/context/analysis-context'
 import { useLanguage } from '@/context/language-context'
-import { TextureThumbnail, BlockThumbnail } from '@/components/detail/shared/thumbnails'
+import { TextureThumbnail, BlockThumbnail, SpawnEggThumbnail } from '@/components/detail/shared/thumbnails'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
 import type { AnalysisResult, ItemSpec, BlockSpec, EntitySpec } from '@/types'
@@ -125,7 +125,11 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
                 <div className="flex items-center gap-3">
                   {geometry
                     ? <BlockThumbnail src={texSrc} geometry={geometry} />
-                    : <TextureThumbnail src={texSrc} />}
+                    : texSrc
+                      ? <TextureThumbnail src={texSrc} />
+                      : entity.spawnEgg?.baseColor
+                        ? <SpawnEggThumbnail baseColor={entity.spawnEgg.baseColor} overlayColor={entity.spawnEgg.overlayColor} />
+                        : <TextureThumbnail />}
                   <div>
                     <span className="font-heading text-sm font-semibold">{entity.title ?? entity.id}</span>
                     {entity.title && <span className="font-mono text-xs text-muted-foreground ml-2">{entity.id}</span>}

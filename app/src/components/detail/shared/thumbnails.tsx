@@ -1,6 +1,58 @@
 import { useRef, useEffect } from 'react'
 import type { GeometryDef } from '@/analyzer/geometry-parser'
 
+// 16×16 egg silhouette mask (each row is 16 bits, bit 15 = left edge)
+const EGG_MASK: number[] = [
+  0x0000, 0x03C0, 0x07E0, 0x0FF0,
+  0x0FF0, 0x1FF8, 0x1FF8, 0x1FF8,
+  0x1FF8, 0x1FF8, 0x1FF8, 0x0FF0,
+  0x0FF0, 0x07E0, 0x03C0, 0x0000,
+]
+
+// Spot pattern mask (subset of EGG_MASK)
+const SPOT_MASK: number[] = [
+  0x0000, 0x0000, 0x0240, 0x0080,
+  0x0410, 0x0800, 0x0100, 0x0048,
+  0x0420, 0x1080, 0x0210, 0x0840,
+  0x0480, 0x0100, 0x0000, 0x0000,
+]
+
+export function SpawnEggThumbnail({ baseColor, overlayColor, size = 32 }: { baseColor: string; overlayColor?: string; size?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')!
+    ctx.clearRect(0, 0, 16, 16)
+
+    const base = baseColor
+    const overlay = overlayColor ?? baseColor
+
+    for (let y = 0; y < 16; y++) {
+      const eggRow = EGG_MASK[y]
+      const spotRow = SPOT_MASK[y]
+      for (let x = 0; x < 16; x++) {
+        const bit = 1 << (15 - x)
+        if (eggRow & bit) {
+          ctx.fillStyle = (spotRow & bit) ? overlay : base
+          ctx.fillRect(x, y, 1, 1)
+        }
+      }
+    }
+  }, [baseColor, overlayColor])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={16}
+      height={16}
+      className="flex-shrink-0"
+      style={{ width: size, height: size, imageRendering: 'pixelated' }}
+    />
+  )
+}
+
 export function TextureThumbnail({ src, size = 32 }: { src?: string; size?: number }) {
   if (!src) {
     return (

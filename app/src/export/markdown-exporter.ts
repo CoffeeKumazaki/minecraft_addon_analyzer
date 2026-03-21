@@ -66,6 +66,27 @@ export function exportMarkdown(result: AnalysisResult): string {
       const tags = entity.tags.length > 0 ? ` [${entity.tags.join(', ')}]` : ''
       const hp = entity.health != null ? ` HP:${entity.health}` : ''
       lines.push(`- \`${entity.id}\`${hp}${tags}`)
+
+      // Show loot drops if available
+      if (entity.lootTables.length > 0 && result.lootTables.length > 0) {
+        for (const ref of entity.lootTables) {
+          const refNorm = ref.replace(/\\/g, '/')
+          const lt = result.lootTables.find(t => {
+            const srcNorm = t.sourcePath.replace(/\\/g, '/')
+            return srcNorm.includes(refNorm) || srcNorm.endsWith(refNorm)
+          })
+          if (!lt) continue
+          for (const pool of lt.pools) {
+            for (const drop of pool.drops) {
+              const pct = (drop.chance * 100)
+              const pctStr = pct >= 10 ? `${Math.round(pct)}%` : pct >= 1 ? `${pct.toFixed(1)}%` : `${pct.toFixed(2)}%`
+              const count = drop.countMin === drop.countMax ? `${drop.countMin}` : `${drop.countMin}–${drop.countMax}`
+              const dropName = drop.title ?? drop.item
+              lines.push(`  - Drop: \`${dropName}\` ${pctStr} (×${count})`)
+            }
+          }
+        }
+      }
     }
     lines.push('')
   }
