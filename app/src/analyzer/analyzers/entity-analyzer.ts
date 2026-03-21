@@ -104,8 +104,8 @@ function extractEntity(root: Record<string, unknown>, sourcePath: string): Entit
     if (typeof spawnEggRaw === 'object' && spawnEggRaw !== null) {
       if (typeof spawnEggRaw.texture === 'string') spawnEgg.texture = spawnEggRaw.texture
       if (typeof spawnEggRaw.texture_index === 'number') spawnEgg.textureIndex = spawnEggRaw.texture_index
-      if (typeof spawnEggRaw.base_color === 'string') spawnEgg.baseColor = spawnEggRaw.base_color
-      if (typeof spawnEggRaw.overlay_color === 'string') spawnEgg.overlayColor = spawnEggRaw.overlay_color
+      spawnEgg.baseColor = toColorHex(spawnEggRaw.base_color)
+      spawnEgg.overlayColor = toColorHex(spawnEggRaw.overlay_color)
     }
   }
 
@@ -157,6 +157,21 @@ function extractEntity(root: Record<string, unknown>, sourcePath: string): Entit
     references,
     diagnostics: [],
   }
+}
+
+/** Convert a color value (string or number) to a CSS hex string, or undefined */
+function toColorHex(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed.startsWith('#')) return trimmed
+    if (/^[0-9a-fA-F]{6}$/.test(trimmed)) return `#${trimmed}`
+    return trimmed
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const clamped = Math.max(0, Math.min(0xFFFFFF, Math.round(value)))
+    return `#${clamped.toString(16).padStart(6, '0')}`
+  }
+  return undefined
 }
 
 function createErrorEntity(path: string, error: string): EntitySpec {

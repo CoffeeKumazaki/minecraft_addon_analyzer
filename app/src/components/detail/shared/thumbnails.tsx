@@ -1,21 +1,57 @@
 import { useRef, useEffect } from 'react'
 import type { GeometryDef } from '@/analyzer/geometry-parser'
 
-// 16×16 egg silhouette mask (each row is 16 bits, bit 15 = left edge)
-const EGG_MASK: number[] = [
-  0x0000, 0x03C0, 0x07E0, 0x0FF0,
-  0x0FF0, 0x1FF8, 0x1FF8, 0x1FF8,
-  0x1FF8, 0x1FF8, 0x1FF8, 0x0FF0,
-  0x0FF0, 0x07E0, 0x03C0, 0x0000,
-]
+// Minecraft spawn egg base texture (16×16 grayscale egg silhouette with shading)
+const EGG_BASE_URL = 'data:image/webp;base64,UklGRsAAAABXRUJQVlA4TLMAAAAvn8AnEIXjRpIUaTw9/rUP7dIZgbMuHDMzmJDqOfj16CLmfwKCPzE1lDBfoE2HYRFqU89Pw35Tsg2LMIYS5gEuTW/hLPT8NOyHl/AV3sJTOA0JldDLm4XnkJzDddhv6uVpOAzX4aXpJuxPTKiEvt0yJKdwHNrEiRuhR9cPJyHZhv2JU5VCP45q2A/HYb9p/La1MPhoT60Vxh/dDL08Kk1T9cJa0+Dr+me2EtYmDn62f5YHBAA='
+// Minecraft spawn egg overlay texture (16×16 spot pattern)
+const EGG_OVERLAY_URL = 'data:image/webp;base64,UklGRqIAAABXRUJQVlA4TJUAAAAvn8AnEFU4jW1bdTpOFLN6Mk2wi4xDxyVgMXs+48nHiP5PQJH7P4k/tdSuMVR+UziHa/iA1sxgD+q9CVzBHbxAa7aw8HB9Rp/wBotAqc+cO4cG/geo4Qtas4d6bwTnkPxg4dv6bAgNJNaeoXMmUNE5dwPn0EBSWtqEym8ODZxCa1qwAZWfG0tYBFTdVcMOtMa/9ZnyBwA='
 
-// Spot pattern mask (subset of EGG_MASK)
-const SPOT_MASK: number[] = [
-  0x0000, 0x0000, 0x0240, 0x0080,
-  0x0410, 0x0800, 0x0100, 0x0048,
-  0x0420, 0x1080, 0x0210, 0x0840,
-  0x0480, 0x0100, 0x0000, 0x0000,
-]
+/** Parse "#RRGGBB" into [r, g, b] */
+function parseHex(color: string): [number, number, number] {
+  const hex = color.startsWith('#') ? color.slice(1) : color
+  const n = parseInt(hex.padStart(6, '0'), 16)
+  return [(n >> 16) & 0xFF, (n >> 8) & 0xFF, n & 0xFF]
+}
+
+/** Tint a grayscale image onto a canvas with the given color */
+function tintLayer(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  color: [number, number, number],
+) {
+  // Draw the image to read its pixels
+  const tmp = document.createElement('canvas')
+  tmp.width = 16
+  tmp.height = 16
+  const tctx = tmp.getContext('2d')!
+  tctx.drawImage(img, 0, 0, 16, 16)
+  const imgData = tctx.getImageData(0, 0, 16, 16)
+  const d = imgData.data
+
+  // Multiply each pixel's luminance by the tint color
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = d[i] / 255 // grayscale luminance
+    d[i]     = Math.round(color[0] * lum)
+    d[i + 1] = Math.round(color[1] * lum)
+    d[i + 2] = Math.round(color[2] * lum)
+    // d[i+3] (alpha) stays as-is
+  }
+
+  tctx.putImageData(imgData, 0, 0)
+  ctx.drawImage(tmp, 0, 0)
+}
+
+// Cache loaded images
+const imgCache = new Map<string, HTMLImageElement>()
+function loadImg(src: string): Promise<HTMLImageElement> {
+  const cached = imgCache.get(src)
+  if (cached) return Promise.resolve(cached)
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => { imgCache.set(src, img); resolve(img) }
+    img.src = src
+  })
+}
 
 export function SpawnEggThumbnail({ baseColor, overlayColor, size = 32 }: { baseColor: string; overlayColor?: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -23,23 +59,21 @@ export function SpawnEggThumbnail({ baseColor, overlayColor, size = 32 }: { base
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')!
-    ctx.clearRect(0, 0, 16, 16)
+    let cancelled = false
 
-    const base = baseColor
-    const overlay = overlayColor ?? baseColor
+    Promise.all([loadImg(EGG_BASE_URL), loadImg(EGG_OVERLAY_URL)]).then(([baseImg, overlayImg]) => {
+      if (cancelled) return
+      const ctx = canvas.getContext('2d')!
+      ctx.clearRect(0, 0, 16, 16)
 
-    for (let y = 0; y < 16; y++) {
-      const eggRow = EGG_MASK[y]
-      const spotRow = SPOT_MASK[y]
-      for (let x = 0; x < 16; x++) {
-        const bit = 1 << (15 - x)
-        if (eggRow & bit) {
-          ctx.fillStyle = (spotRow & bit) ? overlay : base
-          ctx.fillRect(x, y, 1, 1)
-        }
-      }
-    }
+      const baseRgb = parseHex(baseColor)
+      const overlayRgb = parseHex(overlayColor ?? baseColor)
+
+      tintLayer(ctx, baseImg, baseRgb)
+      tintLayer(ctx, overlayImg, overlayRgb)
+    })
+
+    return () => { cancelled = true }
   }, [baseColor, overlayColor])
 
   return (

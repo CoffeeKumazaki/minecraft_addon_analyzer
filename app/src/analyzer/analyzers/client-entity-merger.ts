@@ -1,4 +1,4 @@
-import type { VirtualFS, EntitySpec, ReferenceLink } from '@/types'
+import type { VirtualFS, EntitySpec, ReferenceLink, SpawnEggInfo } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
 
 type ClientEntityInfo = {
@@ -6,6 +6,7 @@ type ClientEntityInfo = {
   textures: string[]
   geometries: string[]
   animations: string[]
+  spawnEgg?: SpawnEggInfo
 }
 
 /**
@@ -58,7 +59,18 @@ export function mergeClientEntities(
       }
     }
 
-    clientMap.set(id, { identifier: id, textures, geometries, animations })
+    // Extract spawn_egg colors from client entity
+    let spawnEgg: SpawnEggInfo | undefined
+    const spawnEggRaw = desc.spawn_egg as Record<string, unknown> | undefined
+    if (typeof spawnEggRaw === 'object' && spawnEggRaw !== null) {
+      spawnEgg = {}
+      if (typeof spawnEggRaw.texture === 'string') spawnEgg.texture = spawnEggRaw.texture
+      if (typeof spawnEggRaw.texture_index === 'number') spawnEgg.textureIndex = spawnEggRaw.texture_index
+      spawnEgg.baseColor = toColorHex(spawnEggRaw.base_color)
+      spawnEgg.overlayColor = toColorHex(spawnEggRaw.overlay_color)
+    }
+
+    clientMap.set(id, { identifier: id, textures, geometries, animations, spawnEgg })
   }
 
   // Merge into EntitySpecs
@@ -87,5 +99,29 @@ export function mergeClientEntities(
         entity.references.push({ kind: 'animation', target: anim, resolved: false })
       }
     }
+
+    // Merge spawn egg if BP didn't have color info
+    if (client.spawnEgg && (!entity.spawnEgg || (!entity.spawnEgg.baseColor && !entity.spawnEgg.overlayColor))) {
+      if (!entity.spawnEgg) entity.spawnEgg = {}
+      if (client.spawnEgg.baseColor) entity.spawnEgg.baseColor = client.spawnEgg.baseColor
+      if (client.spawnEgg.overlayColor) entity.spawnEgg.overlayColor = client.spawnEgg.overlayColor
+      if (client.spawnEgg.texture && !entity.spawnEgg.texture) entity.spawnEgg.texture = client.spawnEgg.texture
+      if (client.spawnEgg.textureIndex != null && entity.spawnEgg.textureIndex == null) entity.spawnEgg.textureIndex = client.spawnEgg.textureIndex
+    }
   }
+}
+
+/** Convert a color value (string or number) to a CSS hex string, or undefined */
+function toColorHex(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed.startsWith('#')) return trimmed
+    if (/^[0-9a-fA-F]{6}$/.test(trimmed)) return `#${trimmed}`
+    return trimmed
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const clamped = Math.max(0, Math.min(0xFFFFFF, Math.round(value)))
+    return `#${clamped.toString(16).padStart(6, '0')}`
+  }
+  return undefined
 }
