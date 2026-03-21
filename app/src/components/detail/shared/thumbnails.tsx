@@ -28,13 +28,15 @@ function tintLayer(
   const imgData = tctx.getImageData(0, 0, 16, 16)
   const d = imgData.data
 
-  // Multiply each pixel's luminance by the tint color
+  // Multiply each pixel's luminance by the tint color, snap alpha for clean edges
   for (let i = 0; i < d.length; i += 4) {
-    const lum = d[i] / 255 // grayscale luminance
+    const a = d[i + 3]
+    if (a < 128) { d[i] = d[i+1] = d[i+2] = d[i+3] = 0; continue }
+    const lum = d[i] / 255
     d[i]     = Math.round(color[0] * lum)
     d[i + 1] = Math.round(color[1] * lum)
     d[i + 2] = Math.round(color[2] * lum)
-    // d[i+3] (alpha) stays as-is
+    d[i + 3] = 255
   }
 
   tctx.putImageData(imgData, 0, 0)
