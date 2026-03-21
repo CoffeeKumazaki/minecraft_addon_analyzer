@@ -2,13 +2,13 @@ import { CheckCircle2, AlertCircle } from 'lucide-react'
 import type { ReferenceLink } from '@/types'
 
 const KIND_LABELS: Record<string, string> = {
-  texture: 'テクスチャ',
-  geometry: 'ジオメトリ',
-  animation: 'アニメーション',
-  animation_controller: 'アニメーションコントローラ',
-  loot_table: 'ルートテーブル',
-  icon: 'アイコン',
-  sound: 'サウンド',
+  texture: 'Texture',
+  geometry: 'Geometry',
+  animation: 'Animation',
+  animation_controller: 'Animation Controller',
+  loot_table: 'Loot Table',
+  icon: 'Icon',
+  sound: 'Sound',
 }
 
 type Props = {
@@ -26,19 +26,19 @@ export function ReferenceList({ references }: Props) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {Array.from(grouped.entries()).map(([kind, refs]) => (
         <div key={kind}>
-          <h4 className="text-xs font-medium text-muted-foreground mb-1">
-            {KIND_LABELS[kind] ?? kind}
+          <h4 className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground mb-1">
+            {KIND_LABELS[kind]?.toUpperCase() ?? kind.toUpperCase()}
           </h4>
           <div className="space-y-1">
             {refs.map((ref, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
                 {ref.resolved ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                  <CheckCircle2 className="h-3.5 w-3.5 text-success shrink-0" />
                 ) : (
-                  <AlertCircle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+                  <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
                 )}
                 <span className="font-mono text-xs break-all">{ref.target}</span>
               </div>

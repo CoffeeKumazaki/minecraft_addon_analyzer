@@ -31,7 +31,7 @@ export function AddPackUpload({ missingTypes }: Props) {
 
   const handleFile = useCallback(async (file: File) => {
     if (!isAcceptedFile(file)) {
-      setError('対応していないファイル形式です。')
+      setError('Unsupported file format.')
       return
     }
 
@@ -43,7 +43,7 @@ export function AddPackUpload({ missingTypes }: Props) {
       const { result, textureMap, geometryMap } = await analyzeAddon(allFiles)
       dispatch({ type: 'SET_RESULT', result, textureMap, geometryMap, files: allFiles })
     } catch (e) {
-      setError(e instanceof Error ? e.message : '解析に失敗しました')
+      setError(e instanceof Error ? e.message : 'Analysis failed')
     } finally {
       setIsLoading(false)
     }
@@ -77,21 +77,21 @@ export function AddPackUpload({ missingTypes }: Props) {
       onDragLeave={onDragLeave}
       onClick={() => !isLoading && inputRef.current?.click()}
       className={`
-        border border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors
-        ${isDragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}
+        border-2 border-dashed p-4 text-center cursor-pointer transition-colors
+        ${isDragOver ? 'border-accent bg-accent/5' : 'border-border-light hover:border-accent/50'}
         ${isLoading ? 'pointer-events-none opacity-60' : ''}
       `}
     >
       {isLoading ? (
         <div className="flex items-center justify-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">統合解析中...</p>
+          <p className="text-sm text-muted-foreground">Merging analysis...</p>
         </div>
       ) : (
         <div className="flex items-center justify-center gap-2">
           <Plus className="h-4 w-4 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            {missingLabel} をドロップまたはクリックして追加
+            Drop or click to add {missingLabel}
           </p>
         </div>
       )}

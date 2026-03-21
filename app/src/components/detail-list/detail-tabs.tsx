@@ -1,7 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Search } from 'lucide-react'
@@ -26,29 +25,15 @@ export function DetailTabs({ result }: Props) {
   const validTabs = ['items', 'blocks', 'entities']
   const activeTab = validTabs.includes(searchParams.get('tab') ?? '') ? searchParams.get('tab')! : 'items'
 
-  const tabs = useMemo(() => [
-    { key: 'items', label: `アイテム (${result.items.length})`, data: result.items },
-    { key: 'blocks', label: `ブロック (${result.blocks.length})`, data: result.blocks },
-    { key: 'entities', label: `モブ (${result.entities.length})`, data: result.entities },
-  ], [result])
-
   return (
     <Tabs value={activeTab} onValueChange={(v) => setSearchParams({ tab: v }, { replace: true })}>
-      <TabsList className="flex flex-wrap h-auto gap-1">
-        {tabs.map(tab => (
-          <TabsTrigger key={tab.key} value={tab.key} className="text-xs">
-            {tab.label}
-          </TabsTrigger>
-        ))}
-      </TabsList>
-
-      <div className="relative mt-3 mb-2">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="名前で検索..."
+      <div className="relative mb-3">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <input
+          placeholder="Search by name..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="pl-9"
+          className="w-full h-11 pl-10 pr-4 border-2 border-border bg-transparent text-sm placeholder:text-muted-foreground focus:outline-none focus:border-accent"
         />
       </div>
 
@@ -69,20 +54,20 @@ function ItemList({ items, search, textureMap }: { items: ItemSpec[]; search: st
   const filtered = items.filter(i => i.id.toLowerCase().includes(search) || (i.title?.toLowerCase().includes(search) ?? false))
   if (filtered.length === 0) return <EmptyState />
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       {filtered.map(item => (
         <Link key={item.id} to={`/results/items/${encodeURIComponent(item.id)}`}>
-          <Card className="p-3 hover:bg-muted/50 transition-colors">
+          <Card className="p-3 px-4 hover:bg-secondary/50 transition-colors border border-border-light rounded-none">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <TextureThumbnail src={item.icon ? textureMap?.get(item.icon) : undefined} />
                 <div>
-                  <span className="text-sm">{item.title ?? item.id}</span>
+                  <span className="font-heading text-sm font-semibold">{item.title ?? item.id}</span>
                   {item.title && <span className="font-mono text-xs text-muted-foreground ml-2">{item.id}</span>}
                 </div>
               </div>
               <div className="flex gap-1">
-                {item.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                {item.tags.map(t => <TagBadge key={t} tag={t} />)}
               </div>
             </div>
           </Card>
@@ -96,23 +81,23 @@ function BlockList({ blocks, search, textureMap, geometryMap }: { blocks: BlockS
   const filtered = blocks.filter(b => b.id.toLowerCase().includes(search) || (b.title?.toLowerCase().includes(search) ?? false))
   if (filtered.length === 0) return <EmptyState />
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       {filtered.map(block => {
         const geoRef = block.references.find(r => r.kind === 'geometry')
         const geometry = geoRef ? geometryMap?.get(geoRef.target) : undefined
         return (
           <Link key={block.id} to={`/results/blocks/${encodeURIComponent(block.id)}`}>
-            <Card className="p-3 hover:bg-muted/50 transition-colors">
+            <Card className="p-3 px-4 hover:bg-secondary/50 transition-colors border border-border-light rounded-none">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <BlockThumbnail src={block.textures[0] ? textureMap?.get(block.textures[0]) : undefined} geometry={geometry} />
                   <div>
-                    <span className="text-sm">{block.title ?? block.id}</span>
+                    <span className="font-heading text-sm font-semibold">{block.title ?? block.id}</span>
                     {block.title && <span className="font-mono text-xs text-muted-foreground ml-2">{block.id}</span>}
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  {block.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                  {block.tags.map(t => <TagBadge key={t} tag={t} />)}
                 </div>
               </div>
             </Card>
@@ -127,21 +112,21 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
   const filtered = entities.filter(e => e.id.toLowerCase().includes(search) || (e.title?.toLowerCase().includes(search) ?? false))
   if (filtered.length === 0) return <EmptyState />
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       {filtered.map(entity => {
         const texSrc = entity.textures[0] ? textureMap?.get(entity.textures[0]) : undefined
         const geoId = entity.geometries[0]
         const geometry = geoId ? geometryMap?.get(geoId) : undefined
         return (
           <Link key={entity.id} to={`/results/entities/${encodeURIComponent(entity.id)}`}>
-            <Card className="p-3 hover:bg-muted/50 transition-colors">
+            <Card className="p-3 px-4 hover:bg-secondary/50 transition-colors border border-border-light rounded-none">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   {geometry
                     ? <BlockThumbnail src={texSrc} geometry={geometry} />
                     : <TextureThumbnail src={texSrc} />}
                   <div>
-                    <span className="text-sm">{entity.title ?? entity.id}</span>
+                    <span className="font-heading text-sm font-semibold">{entity.title ?? entity.id}</span>
                     {entity.title && <span className="font-mono text-xs text-muted-foreground ml-2">{entity.id}</span>}
                     {entity.health != null && (
                       <span className="text-xs text-muted-foreground ml-2">HP: {entity.health}</span>
@@ -149,7 +134,7 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
                   </div>
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end">
-                  {entity.tags.map(t => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                  {entity.tags.map(t => <TagBadge key={t} tag={t} />)}
                 </div>
               </div>
             </Card>
@@ -160,8 +145,34 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
   )
 }
 
+const TAG_COLORS: Record<string, string> = {
+  weapon: 'bg-accent text-accent-foreground',
+  tool: 'bg-success text-primary-foreground',
+  food: 'bg-destructive text-destructive-foreground',
+  armor: 'bg-chart-4 text-primary-foreground',
+  hostile: 'bg-destructive text-destructive-foreground',
+  passive: 'bg-success text-primary-foreground',
+  boss: 'bg-chart-5 text-primary-foreground',
+}
 
-function EmptyState({ message = '該当する要素はありません' }: { message?: string }) {
+function TagBadge({ tag }: { tag: string }) {
+  const lower = tag.toLowerCase()
+  const colorClass = Object.entries(TAG_COLORS).find(([k]) => lower.includes(k))?.[1]
+  if (colorClass) {
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 font-heading text-[9px] font-semibold tracking-[1px] ${colorClass}`}>
+        {tag.toUpperCase()}
+      </span>
+    )
+  }
+  return (
+    <Badge variant="outline" className="font-heading text-[9px] font-semibold tracking-[1px] rounded-none border-border">
+      {tag.toUpperCase()}
+    </Badge>
+  )
+}
+
+function EmptyState({ message = 'No matching elements found' }: { message?: string }) {
   return (
     <div className="py-8 text-center text-sm text-muted-foreground">
       {message}

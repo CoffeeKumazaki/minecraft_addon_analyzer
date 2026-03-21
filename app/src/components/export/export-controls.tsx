@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button'
 import { Download, FileText } from 'lucide-react'
 import { exportMarkdown } from '@/export/markdown-exporter'
 import type { AnalysisResult } from '@/types'
@@ -29,15 +28,21 @@ export function ExportControls({ result }: Props) {
   }
 
   return (
-    <div className="flex gap-2">
-      <Button variant="outline" size="sm" onClick={handleJsonExport}>
-        <Download className="h-4 w-4 mr-1" />
-        JSON出力
-      </Button>
-      <Button variant="outline" size="sm" onClick={handleMarkdownExport}>
-        <FileText className="h-4 w-4 mr-1" />
-        Markdown出力
-      </Button>
+    <div className="flex gap-3 justify-end">
+      <button
+        onClick={handleJsonExport}
+        className="flex items-center gap-2 border-2 border-border px-5 py-2.5 font-heading text-[11px] font-semibold tracking-[1px] hover:bg-secondary transition-colors cursor-pointer"
+      >
+        <Download className="h-4 w-4" />
+        EXPORT JSON
+      </button>
+      <button
+        onClick={handleMarkdownExport}
+        className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-2.5 font-heading text-[11px] font-semibold tracking-[1px] hover:opacity-90 transition-opacity cursor-pointer"
+      >
+        <FileText className="h-4 w-4" />
+        EXPORT MARKDOWN
+      </button>
     </div>
   )
 }

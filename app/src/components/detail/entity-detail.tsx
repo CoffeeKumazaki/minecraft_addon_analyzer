@@ -1,10 +1,9 @@
 import { Badge } from '@/components/ui/badge'
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { SectionCard } from './shared/section-card'
 import { ReferenceList } from './shared/reference-list'
 import { TextureThumbnail, BlockThumbnail } from './shared/thumbnails'
 import {
-  FileText, Link2, Heart, Zap,
+  Link2, Heart, Zap,
   Brain, Calendar, Layers, Image,
   Clapperboard, Scroll, MapPin, Egg,
 } from 'lucide-react'
@@ -22,12 +21,20 @@ function stripMinecraft(s: string): string {
   return s.replace(/^minecraft:/, '')
 }
 
+function StatPill({ icon: Icon, iconColor, label, value }: { icon: React.ElementType; iconColor: string; label: string; value: string | number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 bg-secondary px-2.5 py-1">
+      <Icon className={`h-3 w-3 ${iconColor}`} />
+      <span className="font-heading text-[11px] font-semibold text-foreground">{label} {value}</span>
+    </span>
+  )
+}
+
 function SpawnEggDisplay({ spawnEgg, textureMap }: { spawnEgg: SpawnEggInfo; textureMap: TextureMap | null }) {
   const texSrc = spawnEgg.texture ? textureMap?.get(spawnEgg.texture) : undefined
 
   return (
     <div className="flex items-center gap-4">
-      {/* Egg visual */}
       {texSrc ? (
         <TextureThumbnail src={texSrc} size={48} />
       ) : (spawnEgg.baseColor || spawnEgg.overlayColor) ? (
@@ -38,28 +45,26 @@ function SpawnEggDisplay({ spawnEgg, textureMap }: { spawnEgg: SpawnEggInfo; tex
           <ellipse cx="28" cy="22" rx="2" ry="2" fill={spawnEgg.overlayColor ?? '#707070'} opacity="0.5" />
         </svg>
       ) : (
-        <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
+        <div className="w-12 h-12 bg-secondary flex items-center justify-center">
           <Egg className="h-6 w-6 text-muted-foreground" />
         </div>
       )}
-
-      {/* Info */}
       <div className="space-y-1 text-sm">
-        <p className="font-medium">スポーンエッグあり</p>
+        <p className="font-heading font-semibold">Spawn Egg</p>
         {spawnEgg.texture && (
-          <p className="text-xs text-muted-foreground">テクスチャ: <span className="font-mono">{spawnEgg.texture}</span></p>
+          <p className="text-xs text-muted-foreground">Texture: <span className="font-mono">{spawnEgg.texture}</span></p>
         )}
         {spawnEgg.baseColor && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            ベースカラー:
-            <span className="inline-block w-4 h-4 rounded border" style={{ backgroundColor: spawnEgg.baseColor }} />
+            Base:
+            <span className="inline-block w-4 h-4 border border-border" style={{ backgroundColor: spawnEgg.baseColor }} />
             <span className="font-mono">{spawnEgg.baseColor}</span>
           </div>
         )}
         {spawnEgg.overlayColor && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            オーバーレイカラー:
-            <span className="inline-block w-4 h-4 rounded border" style={{ backgroundColor: spawnEgg.overlayColor }} />
+            Overlay:
+            <span className="inline-block w-4 h-4 border border-border" style={{ backgroundColor: spawnEgg.overlayColor }} />
             <span className="font-mono">{spawnEgg.overlayColor}</span>
           </div>
         )}
@@ -74,82 +79,50 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
   const geometry = geoId ? geometryMap?.get(geoId) : undefined
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-start gap-4">
-            {geometry
-              ? <BlockThumbnail src={texSrc} geometry={geometry} size={80} />
-              : <TextureThumbnail src={texSrc} size={80} />}
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-lg">{entity.title ?? entity.id}</CardTitle>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {entity.family && entity.family.map(f => (
-                  <Badge key={f} variant="outline" className="text-xs">{f}</Badge>
-                ))}
-                {entity.tags.map(tag => (
-                  <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
-                ))}
-              </div>
+    <div className="space-y-5">
+      {/* Unified header card */}
+      <div className="border-2 border-border bg-card p-5">
+        <div className="flex items-start gap-4">
+          {geometry
+            ? <BlockThumbnail src={texSrc} geometry={geometry} size={48} />
+            : <TextureThumbnail src={texSrc} size={48} />}
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-heading text-xl font-bold tracking-[-1px]">{entity.title ?? entity.id}</h2>
+              {entity.family && entity.family.map(f => (
+                <Badge key={f} variant="outline" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none border-border py-0">{f.toUpperCase()}</Badge>
+              ))}
+              {entity.tags.map(tag => (
+                <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{tag.toUpperCase()}</Badge>
+              ))}
             </div>
-          </div>
-        </CardHeader>
-      </Card>
-
-      {/* Stats */}
-      {(entity.health != null || entity.movement != null) && (
-        <SectionCard title="ステータス" icon={Heart}>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {entity.health != null && (
-              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-                <Heart className="h-4 w-4 text-red-500" />
-                <div>
-                  <p className="text-xs text-muted-foreground">HP</p>
-                  <p className="text-sm font-medium">{entity.health}</p>
-                </div>
-              </div>
-            )}
-            {entity.movement != null && (
-              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-                <Zap className="h-4 w-4 text-yellow-500" />
-                <div>
-                  <p className="text-xs text-muted-foreground">移動速度</p>
-                  <p className="text-sm font-medium">{entity.movement}</p>
-                </div>
+            <p className="text-[11px] text-muted-foreground font-mono">
+              {entity.id}
+              {entity.sourcePath && <> &middot; {entity.sourcePath}</>}
+            </p>
+            {(entity.health != null || entity.movement != null) && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {entity.health != null && <StatPill icon={Heart} iconColor="text-destructive" label="HP" value={entity.health} />}
+                {entity.movement != null && <StatPill icon={Zap} iconColor="text-accent" label="SPEED" value={entity.movement} />}
               </div>
             )}
           </div>
-        </SectionCard>
-      )}
+        </div>
+      </div>
 
       {/* Spawn Egg */}
       {entity.spawnEgg && (
-        <SectionCard title="スポーンエッグ" icon={Egg}>
+        <SectionCard title="Spawn Egg" icon={Egg}>
           <SpawnEggDisplay spawnEgg={entity.spawnEgg} textureMap={textureMap} />
         </SectionCard>
       )}
 
-      {/* Basic Info */}
-      <SectionCard title="基本情報" icon={FileText}>
-        <div className="space-y-2">
-          <div>
-            <h4 className="text-xs font-medium text-muted-foreground">ID</h4>
-            <p className="text-sm font-mono">{entity.id}</p>
-          </div>
-          <div>
-            <h4 className="text-xs font-medium text-muted-foreground">ソースパス</h4>
-            <p className="text-sm font-mono">{entity.sourcePath}</p>
-          </div>
-        </div>
-      </SectionCard>
-
       {/* Textures & Models */}
       {(entity.textures.length > 0 || entity.geometries.length > 0) && (
-        <SectionCard title="テクスチャ / モデル" icon={Image}>
+        <SectionCard title="Textures / Models" icon={Image}>
           {entity.textures.length > 0 && (
             <div className="mb-3">
-              <h4 className="text-xs font-medium text-muted-foreground mb-2">テクスチャ</h4>
+              <h4 className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground mb-2">TEXTURES</h4>
               <div className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-3">
                 {entity.textures.map((tex, i) => (
                   <div key={i} className="flex flex-col items-center gap-1">
@@ -162,10 +135,10 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
           )}
           {entity.geometries.length > 0 && (
             <div>
-              <h4 className="text-xs font-medium text-muted-foreground mb-1">ジオメトリ</h4>
+              <h4 className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground mb-1">GEOMETRY</h4>
               <div className="flex flex-wrap gap-1">
                 {entity.geometries.map(geo => (
-                  <Badge key={geo} variant="outline" className="text-xs font-mono">{geo}</Badge>
+                  <Badge key={geo} variant="outline" className="text-xs font-mono rounded-none border-border">{geo}</Badge>
                 ))}
               </div>
             </div>
@@ -175,15 +148,10 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
 
       {/* Behaviors */}
       {entity.behaviors.length > 0 && (
-        <SectionCard
-          title="AI行動"
-          icon={Brain}
-          badge={`${entity.behaviors.length}`}
-          defaultOpen={entity.behaviors.length <= 10}
-        >
+        <SectionCard title="AI Behaviors" icon={Brain} badge={`${entity.behaviors.length}`} defaultOpen={entity.behaviors.length <= 10}>
           <div className="flex flex-wrap gap-1">
             {entity.behaviors.map(b => (
-              <Badge key={b} variant="secondary" className="text-xs font-mono">
+              <Badge key={b} variant="secondary" className="text-xs font-mono rounded-none">
                 {stripMinecraft(b)}
               </Badge>
             ))}
@@ -193,10 +161,10 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
 
       {/* Events */}
       {entity.events.length > 0 && (
-        <SectionCard title="イベント" icon={Calendar} badge={`${entity.events.length}`} defaultOpen={false}>
+        <SectionCard title="Events" icon={Calendar} badge={`${entity.events.length}`} defaultOpen={false}>
           <div className="flex flex-wrap gap-1">
             {entity.events.map(e => (
-              <Badge key={e} variant="outline" className="text-xs font-mono">{e}</Badge>
+              <Badge key={e} variant="outline" className="text-xs font-mono rounded-none border-border">{e}</Badge>
             ))}
           </div>
         </SectionCard>
@@ -204,10 +172,10 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
 
       {/* Component Groups */}
       {entity.componentGroups.length > 0 && (
-        <SectionCard title="コンポーネントグループ" icon={Layers} badge={`${entity.componentGroups.length}`} defaultOpen={false}>
+        <SectionCard title="Component Groups" icon={Layers} badge={`${entity.componentGroups.length}`} defaultOpen={false}>
           <div className="flex flex-wrap gap-1">
             {entity.componentGroups.map(cg => (
-              <Badge key={cg} variant="outline" className="text-xs font-mono">{cg}</Badge>
+              <Badge key={cg} variant="outline" className="text-xs font-mono rounded-none border-border">{cg}</Badge>
             ))}
           </div>
         </SectionCard>
@@ -215,7 +183,7 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
 
       {/* Animations */}
       {entity.animations.length > 0 && (
-        <SectionCard title="アニメーション" icon={Clapperboard} badge={`${entity.animations.length}`} defaultOpen={false}>
+        <SectionCard title="Animations" icon={Clapperboard} badge={`${entity.animations.length}`} defaultOpen={false}>
           <div className="space-y-1">
             {entity.animations.map(anim => {
               const ref = entity.references.find(r => r.kind === 'animation' && r.target === anim)
@@ -223,8 +191,8 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
                 <div key={anim} className="flex items-center gap-2 text-sm">
                   {ref ? (
                     ref.resolved
-                      ? <span className="text-green-500 text-xs">&#x2713;</span>
-                      : <span className="text-orange-500 text-xs">&#x2717;</span>
+                      ? <span className="text-success text-xs">&#x2713;</span>
+                      : <span className="text-destructive text-xs">&#x2717;</span>
                   ) : null}
                   <span className="font-mono text-xs">{anim}</span>
                 </div>
@@ -236,7 +204,7 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
 
       {/* Loot Tables */}
       {entity.lootTables.length > 0 && (
-        <SectionCard title="ルートテーブル" icon={Scroll} badge={`${entity.lootTables.length}`}>
+        <SectionCard title="Loot Tables" icon={Scroll} badge={`${entity.lootTables.length}`}>
           <div className="space-y-1">
             {entity.lootTables.map(lt => {
               const ref = entity.references.find(r => r.kind === 'loot_table' && r.target === lt)
@@ -244,8 +212,8 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
                 <div key={lt} className="flex items-center gap-2 text-sm">
                   {ref ? (
                     ref.resolved
-                      ? <span className="text-green-500 text-xs">&#x2713;</span>
-                      : <span className="text-orange-500 text-xs">&#x2717;</span>
+                      ? <span className="text-success text-xs">&#x2713;</span>
+                      : <span className="text-destructive text-xs">&#x2717;</span>
                   ) : null}
                   <span className="font-mono text-xs">{lt}</span>
                 </div>
@@ -257,7 +225,7 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
 
       {/* Spawn Rules */}
       {entity.spawnRules.length > 0 && (
-        <SectionCard title="スポーンルール" icon={MapPin} badge={`${entity.spawnRules.length}`}>
+        <SectionCard title="Spawn Rules" icon={MapPin} badge={`${entity.spawnRules.length}`}>
           <div className="space-y-1">
             {entity.spawnRules.map(sr => (
               <p key={sr} className="text-sm font-mono">{sr}</p>
@@ -266,13 +234,12 @@ export function EntityDetail({ entity, textureMap, geometryMap }: Props) {
         </SectionCard>
       )}
 
-      {/* All References */}
+      {/* References */}
       {entity.references.length > 0 && (
-        <SectionCard title="全参照" icon={Link2} badge={`${entity.references.length}`} defaultOpen={false}>
+        <SectionCard title="References" icon={Link2} badge={`${entity.references.length}`} defaultOpen={false}>
           <ReferenceList references={entity.references} />
         </SectionCard>
       )}
-
     </div>
   )
 }

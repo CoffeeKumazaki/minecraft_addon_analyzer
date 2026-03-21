@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 import { ItemDetail } from '@/components/detail/item-detail'
 import { BlockDetail } from '@/components/detail/block-detail'
@@ -33,12 +32,10 @@ export function DetailPage() {
     window.scrollTo(0, 0)
   }, [category, id])
 
-  // All hooks must be called unconditionally (before any early returns)
   const { textureMap, geometryMap } = state
   const recipeLookup = useRecipeLookup(state.result?.recipes ?? [])
   const recipeTextureMap = useRecipeTextureMap(textureMap, state.result?.items ?? [], state.result?.blocks ?? [])
 
-  // Synchronous guard: render nothing until redirect fires
   if (!state.result || !category || !id) {
     return null
   }
@@ -48,22 +45,20 @@ export function DetailPage() {
   if (!found?.data) {
     return (
       <div className="container mx-auto px-4 py-8 text-center">
-        <p className="text-muted-foreground">要素が見つかりません</p>
-        <Button variant="link" asChild>
-          <Link to="/results">結果一覧に戻る</Link>
-        </Button>
+        <p className="text-muted-foreground">Element not found</p>
+        <Link to="/results" className="text-accent hover:underline text-sm mt-2 inline-block">
+          Back to results
+        </Link>
       </div>
     )
   }
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-4">
-      <Button variant="ghost" size="sm" asChild>
-        <Link to="/results">
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          結果一覧
-        </Link>
-      </Button>
+    <div className="container mx-auto px-4 sm:px-16 py-8 space-y-6">
+      <Link to="/results" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <ArrowLeft className="h-4 w-4" />
+        <span className="font-heading font-medium">Back to results</span>
+      </Link>
 
       {found.kind === 'item' && (
         <ItemDetail item={found.data} textureMap={textureMap} recipeTextureMap={recipeTextureMap} recipeLookup={recipeLookup} />

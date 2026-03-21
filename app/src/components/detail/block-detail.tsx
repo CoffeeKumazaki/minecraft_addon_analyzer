@@ -1,11 +1,10 @@
 import { Badge } from '@/components/ui/badge'
-import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { SectionCard } from './shared/section-card'
 import { ReferenceList } from './shared/reference-list'
 import { BlockThumbnail, TextureThumbnail } from './shared/thumbnails'
 import { RecipeCard } from './shared/recipe-diagrams'
 import {
-  FileText, Link2, Image, ToggleLeft, ChefHat, ArrowRightFromLine,
+  Link2, Image, ToggleLeft, ChefHat, ArrowRightFromLine,
   Pickaxe, Shield, Sun, SunDim, Snowflake, Flame, Palette, Hammer,
 } from 'lucide-react'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
@@ -28,6 +27,24 @@ type Props = {
   recipeLookup: RecipeLookup | null
 }
 
+function StatPill({ icon: Icon, iconColor, label, value }: { icon: React.ElementType; iconColor: string; label: string; value: string | number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 bg-secondary px-2.5 py-1">
+      <Icon className={`h-3 w-3 ${iconColor}`} />
+      <span className="font-heading text-[11px] font-semibold text-foreground">{label} {value}</span>
+    </span>
+  )
+}
+
+function MapColorPill({ color }: { color: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 bg-secondary px-2.5 py-1">
+      <span className="inline-block w-3 h-3 border border-border" style={{ backgroundColor: color }} />
+      <span className="font-heading text-[11px] font-semibold text-foreground">MAP {color}</span>
+    </span>
+  )
+}
+
 export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, recipeLookup }: Props) {
   const geoRef = block.references.find(r => r.kind === 'geometry')
   const geometry = geoRef ? geometryMap?.get(geoRef.target) : undefined
@@ -35,47 +52,45 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, 
   const usedInRecipes = recipeLookup ? lookupRecipesForId(recipeLookup, block.id, 'input') : []
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-start gap-4">
-            <BlockThumbnail
-              src={block.textures[0] ? textureMap?.get(block.textures[0]) : undefined}
-              geometry={geometry}
-              size={80}
-            />
-            <div className="flex-1 min-w-0">
-              <CardTitle className="text-lg">{block.title ?? block.id}</CardTitle>
-              {block.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {block.tags.map(tag => (
-                    <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
-                  ))}
-                </div>
-              )}
+    <div className="space-y-5">
+      {/* Unified header card */}
+      <div className="border-2 border-border bg-card p-5">
+        <div className="flex items-start gap-4">
+          <BlockThumbnail
+            src={block.textures[0] ? textureMap?.get(block.textures[0]) : undefined}
+            geometry={geometry}
+            size={48}
+          />
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-heading text-xl font-bold tracking-[-1px]">{block.title ?? block.id}</h2>
+              {block.tags.map(tag => (
+                <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{tag.toUpperCase()}</Badge>
+              ))}
             </div>
-          </div>
-        </CardHeader>
-      </Card>
-
-      {/* Basic Info */}
-      <SectionCard title="基本情報" icon={FileText}>
-        <div className="space-y-2">
-          <div>
-            <h4 className="text-xs font-medium text-muted-foreground">ID</h4>
-            <p className="text-sm font-mono">{block.id}</p>
-          </div>
-          <div>
-            <h4 className="text-xs font-medium text-muted-foreground">ソースパス</h4>
-            <p className="text-sm font-mono">{block.sourcePath}</p>
+            <p className="text-[11px] text-muted-foreground font-mono">
+              {block.id}
+              {block.sourcePath && <> &middot; {block.sourcePath}</>}
+            </p>
+            {hasAnyBlockStats(block.stats) && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {block.stats.miningTime != null && <StatPill icon={Pickaxe} iconColor="text-muted-foreground" label="MINE" value={`${block.stats.miningTime}s`} />}
+                {block.stats.blastResistance != null && <StatPill icon={Shield} iconColor="text-chart-4" label="BLAST" value={block.stats.blastResistance} />}
+                {block.stats.lightEmission != null && <StatPill icon={Sun} iconColor="text-accent" label="LIGHT" value={block.stats.lightEmission} />}
+                {block.stats.lightDampening != null && <StatPill icon={SunDim} iconColor="text-muted-foreground" label="DAMP" value={block.stats.lightDampening} />}
+                {block.stats.friction != null && <StatPill icon={Snowflake} iconColor="text-chart-4" label="FRIC" value={block.stats.friction} />}
+                {block.stats.flammable != null && <StatPill icon={Flame} iconColor="text-chart-1" label="BURN" value={typeof block.stats.flammable === 'boolean' ? (block.stats.flammable ? 'Yes' : 'No') : `${block.stats.flammable.catchChance}/${block.stats.flammable.destroyChance}`} />}
+                {block.stats.mapColor != null && <MapColorPill color={block.stats.mapColor} />}
+                {block.stats.craftingTable != null && <StatPill icon={Hammer} iconColor="text-accent" label="TABLE" value={block.stats.craftingTable.tableName} />}
+              </div>
+            )}
           </div>
         </div>
-      </SectionCard>
+      </div>
 
       {/* Textures */}
       {block.textures.length > 0 && (
-        <SectionCard title="テクスチャ" icon={Image} badge={`${block.textures.length}`}>
+        <SectionCard title="Textures" icon={Image} badge={`${block.textures.length}`}>
           <div className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-3">
             {block.textures.map((tex, i) => (
               <div key={i} className="flex flex-col items-center gap-1">
@@ -89,113 +104,18 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, 
 
       {/* Block States */}
       {block.states && block.states.length > 0 && (
-        <SectionCard title="ブロックステート" icon={ToggleLeft} badge={`${block.states.length}`}>
+        <SectionCard title="Block States" icon={ToggleLeft} badge={`${block.states.length}`}>
           <div className="flex flex-wrap gap-1">
             {block.states.map(state => (
-              <Badge key={state} variant="outline" className="text-xs font-mono">{state}</Badge>
+              <Badge key={state} variant="outline" className="text-xs font-mono rounded-none border-border">{state}</Badge>
             ))}
           </div>
         </SectionCard>
       )}
 
-      {/* Block Stats */}
-      {hasAnyBlockStats(block.stats) && (
-        <SectionCard title="ブロック性能" icon={Hammer}>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {block.stats.miningTime != null && (
-              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-                <Pickaxe className="h-4 w-4 text-stone-500" />
-                <div>
-                  <p className="text-xs text-muted-foreground">採掘時間</p>
-                  <p className="text-sm font-medium">{block.stats.miningTime}秒</p>
-                </div>
-              </div>
-            )}
-            {block.stats.blastResistance != null && (
-              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-                <Shield className="h-4 w-4 text-blue-500" />
-                <div>
-                  <p className="text-xs text-muted-foreground">爆発耐性</p>
-                  <p className="text-sm font-medium">{block.stats.blastResistance}</p>
-                </div>
-              </div>
-            )}
-            {block.stats.lightEmission != null && (
-              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-                <Sun className="h-4 w-4 text-yellow-500" />
-                <div>
-                  <p className="text-xs text-muted-foreground">光レベル</p>
-                  <p className="text-sm font-medium">{block.stats.lightEmission}</p>
-                </div>
-              </div>
-            )}
-            {block.stats.lightDampening != null && (
-              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-                <SunDim className="h-4 w-4 text-gray-500" />
-                <div>
-                  <p className="text-xs text-muted-foreground">光減衰</p>
-                  <p className="text-sm font-medium">{block.stats.lightDampening}</p>
-                </div>
-              </div>
-            )}
-            {block.stats.friction != null && (
-              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-                <Snowflake className="h-4 w-4 text-cyan-500" />
-                <div>
-                  <p className="text-xs text-muted-foreground">摩擦係数</p>
-                  <p className="text-sm font-medium">{block.stats.friction}</p>
-                </div>
-              </div>
-            )}
-            {block.stats.flammable != null && (
-              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-                <Flame className="h-4 w-4 text-orange-500" />
-                <div>
-                  <p className="text-xs text-muted-foreground">可燃性</p>
-                  <p className="text-sm font-medium">
-                    {typeof block.stats.flammable === 'boolean'
-                      ? (block.stats.flammable ? 'あり' : 'なし')
-                      : `着火: ${block.stats.flammable.catchChance} / 消失: ${block.stats.flammable.destroyChance}`
-                    }
-                  </p>
-                </div>
-              </div>
-            )}
-            {block.stats.mapColor != null && (
-              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
-                <Palette className="h-4 w-4 text-pink-500" />
-                <div>
-                  <p className="text-xs text-muted-foreground">マップカラー</p>
-                  <div className="flex items-center gap-1">
-                    <span className="inline-block w-4 h-4 rounded border" style={{ backgroundColor: block.stats.mapColor }} />
-                    <p className="text-sm font-medium font-mono">{block.stats.mapColor}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-            {block.stats.craftingTable != null && (
-              <div className="flex items-center gap-2 bg-muted/50 rounded-md p-2 col-span-2 sm:col-span-3">
-                <Hammer className="h-4 w-4 text-amber-600" />
-                <div>
-                  <p className="text-xs text-muted-foreground">クラフティングテーブル</p>
-                  <p className="text-sm font-medium">{block.stats.craftingTable.tableName}</p>
-                  {block.stats.craftingTable.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {block.stats.craftingTable.tags.map(tag => (
-                        <Badge key={tag} variant="outline" className="text-xs font-mono">{tag}</Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* How to Obtain (入手方法) */}
+      {/* How to Obtain */}
       {obtainRecipes.length > 0 && (
-        <SectionCard title="入手方法" icon={ChefHat} badge={`${obtainRecipes.length}`}>
+        <SectionCard title="How to Obtain" icon={ChefHat} badge={`${obtainRecipes.length}`}>
           <div className="space-y-3">
             {obtainRecipes.map((recipe, i) => (
               <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} />
@@ -204,9 +124,9 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, 
         </SectionCard>
       )}
 
-      {/* Used In (使用先) */}
+      {/* Used In */}
       {usedInRecipes.length > 0 && (
-        <SectionCard title="使用先" icon={ArrowRightFromLine} badge={`${usedInRecipes.length}`}>
+        <SectionCard title="Used In" icon={ArrowRightFromLine} badge={`${usedInRecipes.length}`}>
           <div className="space-y-3">
             {usedInRecipes.map((recipe, i) => (
               <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} />
@@ -217,11 +137,10 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, 
 
       {/* References */}
       {block.references.length > 0 && (
-        <SectionCard title="参照" icon={Link2} badge={`${block.references.length}`}>
+        <SectionCard title="References" icon={Link2} badge={`${block.references.length}`}>
           <ReferenceList references={block.references} />
         </SectionCard>
       )}
-
     </div>
   )
 }

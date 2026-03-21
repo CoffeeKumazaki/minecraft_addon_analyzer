@@ -15,8 +15,8 @@ function App() {
           <Route path="/results/:category/:id" element={<DetailPage />} />
         </Routes>
       </main>
-      <footer className="border-t py-4 text-center text-sm text-muted-foreground">
-        ローカル解析のみ — ファイルは外部に送信されません
+      <footer className="bg-secondary py-4 text-center text-sm text-muted-foreground">
+        Local analysis only — files are never uploaded
       </footer>
     </div>
   )

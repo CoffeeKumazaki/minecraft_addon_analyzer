@@ -18,7 +18,7 @@ export function UploadArea() {
 
   const handleFile = useCallback(async (file: File) => {
     if (!isAcceptedFile(file)) {
-      dispatch({ type: 'SET_ERROR', error: '対応していないファイル形式です。.mcaddon, .mcpack, .mcworld, .zip に対応しています。' })
+      dispatch({ type: 'SET_ERROR', error: 'Unsupported file format. Accepts .mcaddon, .mcpack, .mcworld, .zip' })
       return
     }
 
@@ -31,7 +31,7 @@ export function UploadArea() {
       dispatch({ type: 'SET_RESULT', result, textureMap, geometryMap })
       navigate('/results')
     } catch (e) {
-      dispatch({ type: 'SET_ERROR', error: e instanceof Error ? e.message : '解析に失敗しました' })
+      dispatch({ type: 'SET_ERROR', error: e instanceof Error ? e.message : 'Analysis failed' })
     }
   }, [dispatch, navigate])
 
@@ -66,8 +66,8 @@ export function UploadArea() {
         onDragLeave={onDragLeave}
         onClick={() => !isLoading && inputRef.current?.click()}
         className={`
-          border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors
-          ${isDragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}
+          border-[3px] border-dashed p-12 text-center cursor-pointer transition-colors bg-card
+          ${isDragOver ? 'border-accent bg-accent/5' : 'border-border-light hover:border-accent/50'}
           ${isLoading ? 'pointer-events-none opacity-60' : ''}
         `}
       >
@@ -75,12 +75,12 @@ export function UploadArea() {
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              {state.progress?.step ?? '解析中...'}
+              {state.progress?.step ?? 'Analyzing...'}
             </p>
             {state.progress && (
-              <div className="w-full bg-muted rounded-full h-2">
+              <div className="w-full bg-secondary h-2">
                 <div
-                  className="bg-primary h-2 rounded-full transition-all"
+                  className="bg-accent h-2 transition-all"
                   style={{ width: `${state.progress.percent}%` }}
                 />
               </div>
@@ -89,16 +89,16 @@ export function UploadArea() {
         ) : (
           <div className="flex flex-col items-center gap-3">
             {isDragOver ? (
-              <FileArchive className="h-10 w-10 text-primary" />
+              <FileArchive className="h-12 w-12 text-accent" />
             ) : (
-              <Upload className="h-10 w-10 text-muted-foreground" />
+              <Upload className="h-12 w-12 text-muted-foreground" />
             )}
             <div>
-              <p className="font-medium">
-                {isDragOver ? 'ドロップして解析' : 'Add-on をアップロード'}
+              <p className="font-heading font-semibold text-lg">
+                {isDragOver ? 'Drop to analyze' : 'Drop your Add-on here'}
               </p>
               <p className="text-sm text-muted-foreground mt-1">
-                ドラッグ＆ドロップ または クリックして選択
+                or click to browse files
               </p>
             </div>
           </div>

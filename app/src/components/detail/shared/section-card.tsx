@@ -1,6 +1,4 @@
 import { useState, type ReactNode } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { ChevronDown, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,30 +14,30 @@ export function SectionCard({ title, icon: Icon, defaultOpen = true, badge, chil
   const [open, setOpen] = useState(defaultOpen)
 
   return (
-    <Card>
-      <CardHeader
-        className="cursor-pointer select-none py-3 px-4"
+    <div>
+      <button
+        className="w-full flex items-center justify-between border-b border-border-light pb-2 mb-3 cursor-pointer"
         onClick={() => setOpen(v => !v)}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
-            <CardTitle className="text-sm font-medium">{title}</CardTitle>
-            {badge && <Badge variant="secondary" className="text-xs">{badge}</Badge>}
-          </div>
+        <div className="flex items-center gap-1.5">
+          {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}
+          <span className="font-heading text-[11px] font-semibold tracking-[1px] text-muted-foreground">{title.toUpperCase()}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {badge && (
+            <span className="bg-accent text-accent-foreground font-heading text-[9px] font-semibold px-1.5 py-0.5">
+              {badge}
+            </span>
+          )}
           <ChevronDown
             className={cn(
-              'h-4 w-4 text-muted-foreground transition-transform',
+              'h-3.5 w-3.5 text-muted-foreground transition-transform',
               open && 'rotate-180',
             )}
           />
         </div>
-      </CardHeader>
-      {open && (
-        <CardContent className="px-4 pb-4 pt-0">
-          {children}
-        </CardContent>
-      )}
-    </Card>
+      </button>
+      {open && children}
+    </div>
   )
 }
