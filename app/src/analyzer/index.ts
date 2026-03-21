@@ -1,4 +1,4 @@
-import type { AnalysisResult, AddonSummary, PackType, Diagnostic, SummarySpec } from '@/types'
+import type { AnalysisResult, AddonSummary, PackType, Diagnostic, SummarySpec, VirtualFS } from '@/types'
 import { extractZip } from './zip-extractor'
 import { detectPacks } from './pack-detector'
 import { parseManifest } from './manifest-parser'

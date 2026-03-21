@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Package, Box, Blocks, Bug, CookingPot, AlertTriangle, FileCode } from 'lucide-react'
+import { Package, Box, Blocks, Bug, AlertTriangle, FileCode } from 'lucide-react'
 import type { AnalysisResult } from '@/types'
 
 type Props = {
@@ -15,7 +15,6 @@ export function SummaryCard({ result, fileName }: Props) {
     { label: 'アイテム', count: result.items.length, icon: Box },
     { label: 'ブロック', count: result.blocks.length, icon: Blocks },
     { label: 'モブ', count: result.entities.length, icon: Bug },
-    { label: 'レシピ', count: result.recipes.length, icon: CookingPot },
   ]
 
   const warningCount = result.warnings.length

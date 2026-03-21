@@ -6,11 +6,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { AlertTriangle, Search } from 'lucide-react'
 import { useAnalysisContext } from '@/context/analysis-context'
-import { useRecipeTextureMap } from '@/hooks/use-recipe-lookup'
 import { TextureThumbnail, BlockThumbnail } from '@/components/detail/shared/thumbnails'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
-import type { AnalysisResult, ItemSpec, BlockSpec, EntitySpec, RecipeSpec, Diagnostic } from '@/types'
+import type { AnalysisResult, ItemSpec, BlockSpec, EntitySpec, Diagnostic } from '@/types'
 
 type Props = {
   result: AnalysisResult;
@@ -21,18 +20,16 @@ export function DetailTabs({ result }: Props) {
   const [searchParams, setSearchParams] = useSearchParams()
   const textureMap = state.textureMap
   const geometryMap = state.geometryMap
-  const recipeTextureMap = useRecipeTextureMap(textureMap, result.items, result.blocks)
   const [search, setSearch] = useState('')
   const lowerSearch = search.toLowerCase()
 
-  const validTabs = ['items', 'blocks', 'entities', 'recipes', 'warnings']
+  const validTabs = ['items', 'blocks', 'entities', 'warnings']
   const activeTab = validTabs.includes(searchParams.get('tab') ?? '') ? searchParams.get('tab')! : 'items'
 
   const tabs = useMemo(() => [
     { key: 'items', label: `アイテム (${result.items.length})`, data: result.items },
     { key: 'blocks', label: `ブロック (${result.blocks.length})`, data: result.blocks },
     { key: 'entities', label: `モブ (${result.entities.length})`, data: result.entities },
-    { key: 'recipes', label: `レシピ (${result.recipes.length})`, data: result.recipes },
     { key: 'warnings', label: `警告 (${result.warnings.length})`, data: result.warnings },
   ], [result])
 
@@ -65,9 +62,6 @@ export function DetailTabs({ result }: Props) {
       </TabsContent>
       <TabsContent value="entities">
         <EntityList entities={result.entities} search={lowerSearch} textureMap={textureMap} geometryMap={geometryMap} />
-      </TabsContent>
-      <TabsContent value="recipes">
-        <RecipeList recipes={result.recipes} search={lowerSearch} textureMap={recipeTextureMap} />
       </TabsContent>
       <TabsContent value="warnings">
         <WarningList warnings={result.warnings} search={lowerSearch} />
@@ -167,52 +161,6 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
           </Link>
         )
       })}
-    </div>
-  )
-}
-
-function RecipeIOThumbnail({ item, textureMap }: { item: string; textureMap: TextureMap | null }) {
-  const texSrc = textureMap?.get(item) ?? textureMap?.get(item.replace(/^[a-z_]+:/i, ''))
-  return (
-    <div className="flex items-center gap-1" title={item}>
-      <TextureThumbnail src={texSrc} size={24} />
-      <span className="text-xs font-mono text-muted-foreground truncate max-w-[100px]">
-        {item.replace(/^[a-z_]+:/i, '')}
-      </span>
-    </div>
-  )
-}
-
-function RecipeList({ recipes, search, textureMap }: { recipes: RecipeSpec[]; search: string; textureMap: TextureMap | null }) {
-  const filtered = recipes.filter(r =>
-    (r.id?.toLowerCase().includes(search)) ||
-    r.outputs.some(o => o.item.toLowerCase().includes(search))
-  )
-  if (filtered.length === 0) return <EmptyState />
-  return (
-    <div className="space-y-1">
-      {filtered.map((recipe, i) => (
-        <Link key={recipe.id ?? i} to={`/results/recipes/${encodeURIComponent(recipe.id ?? `recipe-${i}`)}`}>
-          <Card className="p-3 hover:bg-muted/50 transition-colors">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-mono text-sm shrink-0">{recipe.id ?? '(unnamed)'}</span>
-                <Badge variant="secondary" className="text-xs shrink-0">{recipe.recipeType.replace('recipe_', '')}</Badge>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                {recipe.inputs.slice(0, 3).map((io, j) => (
-                  <RecipeIOThumbnail key={j} item={io.item} textureMap={textureMap} />
-                ))}
-                {recipe.inputs.length > 3 && <span className="text-xs text-muted-foreground">+{recipe.inputs.length - 3}</span>}
-                <span className="text-muted-foreground mx-1">→</span>
-                {recipe.outputs.map((io, j) => (
-                  <RecipeIOThumbnail key={j} item={io.item} textureMap={textureMap} />
-                ))}
-              </div>
-            </div>
-          </Card>
-        </Link>
-      ))}
     </div>
   )
 }
