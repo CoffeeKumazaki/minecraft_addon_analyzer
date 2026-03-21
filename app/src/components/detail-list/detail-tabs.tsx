@@ -124,12 +124,12 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   {geometry
-                    ? <BlockThumbnail src={texSrc} geometry={geometry} />
+                    ? <BlockThumbnail src={texSrc} geometry={geometry} size={48} />
                     : texSrc
-                      ? <TextureThumbnail src={texSrc} />
+                      ? <TextureThumbnail src={texSrc} size={48} />
                       : entity.spawnEgg?.baseColor
-                        ? <SpawnEggThumbnail baseColor={entity.spawnEgg.baseColor} overlayColor={entity.spawnEgg.overlayColor} />
-                        : <TextureThumbnail />}
+                        ? <SpawnEggThumbnail baseColor={entity.spawnEgg.baseColor} overlayColor={entity.spawnEgg.overlayColor} size={48} />
+                        : <TextureThumbnail size={48} />}
                   <div>
                     <span className="font-heading text-sm font-semibold">{entity.title ?? entity.id}</span>
                     {entity.title && <span className="font-mono text-xs text-muted-foreground ml-2">{entity.id}</span>}

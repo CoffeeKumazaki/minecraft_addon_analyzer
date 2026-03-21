@@ -257,6 +257,8 @@ type IsoFace = {
   depth: number
   brightness: number
   uv: UVRect
+  flipU?: boolean
+  flipV?: boolean
 }
 
 /** Render custom geometry as isometric projection with UV mapping */
@@ -278,7 +280,7 @@ function renderCustomGeometry(
     const [ox, oy, oz] = cube.origin
     const [sx, sy, sz] = cube.size
 
-    // Top face (Up)
+    // Top face (Up) — UV V-axis is -Z but iso axisY is +Z → flipV
     faces.push({
       origin: isoProject(ox, oy + sy, oz),
       axisXEnd: isoProject(ox + sx, oy + sy, oz),
@@ -286,9 +288,10 @@ function renderCustomGeometry(
       depth: (ox + oz) - (oy + sy),
       brightness: 1.0,
       uv: resolveFaceUV(cube, 'up', w, h, scaleU, scaleV),
+      flipV: true,
     })
 
-    // Left face (South, +Z)
+    // Left face (South, +Z) — UV U-axis is -X but iso axisX is +X → flipU
     faces.push({
       origin: isoProject(ox, oy + sy, oz + sz),
       axisXEnd: isoProject(ox + sx, oy + sy, oz + sz),
@@ -296,9 +299,10 @@ function renderCustomGeometry(
       depth: (ox) + (oz + sz) - oy,
       brightness: 0.7,
       uv: resolveFaceUV(cube, 'south', w, h, scaleU, scaleV),
+      flipU: true,
     })
 
-    // Right face (East, +X)
+    // Right face (East, +X) — axes align, no flip needed
     faces.push({
       origin: isoProject(ox + sx, oy + sy, oz),
       axisXEnd: isoProject(ox + sx, oy + sy, oz + sz),
@@ -353,6 +357,8 @@ function renderCustomGeometry(
       transform(face.axisYEnd),
       face.brightness,
       face.uv,
+      face.flipU,
+      face.flipV,
     )
   }
 }
@@ -360,6 +366,7 @@ function renderCustomGeometry(
 /**
  * Draw one face of the isometric cube using affine transform.
  * Uses UV rect to sample only the correct region of the texture.
+ * flipU/flipV mirror the texture along the U/V axis to correct UV orientation.
  */
 function drawFace(
   ctx: CanvasRenderingContext2D,
@@ -369,6 +376,8 @@ function drawFace(
   axisYEnd: { x: number; y: number },
   brightness: number,
   uv: UVRect,
+  flipU?: boolean,
+  flipV?: boolean,
 ) {
   const { su, sv, sw, sh } = uv
   if (sw <= 0 || sh <= 0) return
@@ -389,7 +398,13 @@ function drawFace(
   const c = (axisYEnd.x - origin.x) / sh
   const d = (axisYEnd.y - origin.y) / sh
   ctx.setTransform(a, b, c, d, origin.x, origin.y)
-  ctx.drawImage(img, su, sv, sw, sh, 0, 0, sw, sh)
+
+  // Flip UV axes as needed: draw mirrored by using negative destination dimensions
+  const dx = flipU ? sw : 0
+  const dy = flipV ? sh : 0
+  const dw = flipU ? -sw : sw
+  const dh = flipV ? -sh : sh
+  ctx.drawImage(img, su, sv, sw, sh, dx, dy, dw, dh)
 
   if (brightness < 1) {
     ctx.fillStyle = `rgba(0,0,0,${1 - brightness})`

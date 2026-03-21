@@ -209,8 +209,8 @@ export function EntityDetail({ entity, textureMap, geometryMap, lootTables, item
       <div className="border-2 border-border bg-card p-5">
         <div className="flex items-start gap-4">
           {geometry
-            ? <BlockThumbnail src={texSrc} geometry={geometry} size={48} />
-            : <TextureThumbnail src={texSrc} size={48} />}
+            ? <BlockThumbnail src={texSrc} geometry={geometry} size={64} />
+            : <TextureThumbnail src={texSrc} size={64} />}
           <div className="flex-1 min-w-0 space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="font-heading text-xl font-bold tracking-[-1px]">{entity.title ?? entity.id}</h2>
