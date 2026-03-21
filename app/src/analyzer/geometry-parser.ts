@@ -15,6 +15,8 @@ export type GeometryCube = {
 
 export type GeometryDef = {
   identifier: string
+  textureWidth?: number
+  textureHeight?: number
   cubes: GeometryCube[]
 }
 
@@ -46,9 +48,11 @@ export function parseGeometries(files: VirtualFS, modelPaths: string[]): Geometr
         const desc = (geo as Record<string, unknown>).description as Record<string, unknown> | undefined
         if (!desc?.identifier) continue
         const id = String(desc.identifier)
+        const tw = typeof desc.texture_width === 'number' ? desc.texture_width : undefined
+        const th = typeof desc.texture_height === 'number' ? desc.texture_height : undefined
         const bones = (geo as Record<string, unknown>).bones
         if (!Array.isArray(bones)) continue
-        map.set(id, { identifier: id, cubes: extractCubesFromBones(bones) })
+        map.set(id, { identifier: id, textureWidth: tw, textureHeight: th, cubes: extractCubesFromBones(bones) })
       }
       continue
     }
@@ -57,9 +61,12 @@ export function parseGeometries(files: VirtualFS, modelPaths: string[]): Geometr
     for (const [key, value] of Object.entries(root)) {
       if (!key.startsWith('geometry.')) continue
       if (!value || typeof value !== 'object') continue
-      const bones = (value as Record<string, unknown>).bones
+      const v = value as Record<string, unknown>
+      const bones = v.bones
       if (!Array.isArray(bones)) continue
-      map.set(key, { identifier: key, cubes: extractCubesFromBones(bones) })
+      const tw = typeof v.texture_width === 'number' ? v.texture_width : undefined
+      const th = typeof v.texture_height === 'number' ? v.texture_height : undefined
+      map.set(key, { identifier: key, textureWidth: tw, textureHeight: th, cubes: extractCubesFromBones(bones) })
     }
   }
 

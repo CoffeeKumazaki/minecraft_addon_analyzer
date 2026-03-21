@@ -160,24 +160,29 @@ type UVRect = { su: number; sv: number; sw: number; sh: number }
 
 /**
  * Resolve UV rect for a face from box UV layout.
- * Bedrock box UV layout with origin [u,v] and cube size [sx,sy,sz]:
- *   Top row (height=sz): Up face at (u+sz, v, sx, sz)
- *   Bottom row (height=sy): East(u,v+sz,sz,sy) North(u+sz,v+sz,sx,sy) West(u+sz+sx,v+sz,sz,sy) South(u+2sz+sx,v+sz,sx,sy)
+ * Bedrock box UV layout with origin [u,v] and cube size [w=sx, h=sy, d=sz]:
+ *   Top row (height=d):  Up at (u+d, v, w, d)
+ *   Bottom row (height=h): West(u,v+d,d,h) North(u+d,v+d,w,h) East(u+d+w,v+d,d,h) South(u+2d+w,v+d,w,h)
  */
 function boxUV(u: number, v: number, sx: number, sy: number, sz: number, face: 'up' | 'south' | 'east'): UVRect {
   switch (face) {
     case 'up':    return { su: u + sz, sv: v, sw: sx, sh: sz }
     case 'south': return { su: u + 2 * sz + sx, sv: v + sz, sw: sx, sh: sy }
-    case 'east':  return { su: u, sv: v + sz, sw: sz, sh: sy }
+    case 'east':  return { su: u + sz + sx, sv: v + sz, sw: sz, sh: sy }
   }
 }
 
-/** Resolve UV rect for a specific face of a cube */
+/**
+ * Resolve UV rect for a specific face of a cube.
+ * UV coordinates are in geometry texture space; scaleU/scaleV converts to image pixel space.
+ */
 function resolveFaceUV(
   cube: GeometryCube,
   face: 'up' | 'south' | 'east',
   imgW: number,
   imgH: number,
+  scaleU: number,
+  scaleV: number,
 ): UVRect {
   const [sx, sy, sz] = cube.size
 
@@ -185,23 +190,32 @@ function resolveFaceUV(
     return { su: 0, sv: 0, sw: imgW, sh: imgH }
   }
 
+  let rect: UVRect
   if (Array.isArray(cube.uv)) {
-    return boxUV(cube.uv[0], cube.uv[1], sx, sy, sz, face)
+    rect = boxUV(cube.uv[0], cube.uv[1], sx, sy, sz, face)
+  } else {
+    // Per-face UV
+    const faceData = (cube.uv as PerFaceUV)[face]
+    if (faceData) {
+      let su = faceData.uv[0]
+      let sv = faceData.uv[1]
+      let sw = faceData.uvSize[0]
+      let sh = faceData.uvSize[1]
+      if (sw < 0) { su += sw; sw = -sw }
+      if (sh < 0) { sv += sh; sh = -sh }
+      rect = { su, sv, sw, sh }
+    } else {
+      return { su: 0, sv: 0, sw: imgW, sh: imgH }
+    }
   }
 
-  // Per-face UV
-  const faceData = (cube.uv as PerFaceUV)[face]
-  if (faceData) {
-    let su = faceData.uv[0]
-    let sv = faceData.uv[1]
-    let sw = faceData.uvSize[0]
-    let sh = faceData.uvSize[1]
-    if (sw < 0) { su += sw; sw = -sw }
-    if (sh < 0) { sv += sh; sh = -sh }
-    return { su, sv, sw, sh }
+  // Scale from geometry texture space to actual image pixel space
+  return {
+    su: rect.su * scaleU,
+    sv: rect.sv * scaleV,
+    sw: rect.sw * scaleU,
+    sh: rect.sh * scaleV,
   }
-
-  return { su: 0, sv: 0, sw: imgW, sh: imgH }
 }
 
 /** Render standard isometric cube (no geometry — uses full texture per face) */
@@ -254,6 +268,9 @@ function renderCustomGeometry(
 ) {
   const w = img.width
   const h = img.height
+  // Scale UV from geometry texture space to actual image pixels
+  const scaleU = geometry.textureWidth ? w / geometry.textureWidth : 1
+  const scaleV = geometry.textureHeight ? h / geometry.textureHeight : 1
 
   const faces: IsoFace[] = []
 
@@ -268,7 +285,7 @@ function renderCustomGeometry(
       axisYEnd: isoProject(ox, oy + sy, oz + sz),
       depth: (ox + oz) - (oy + sy),
       brightness: 1.0,
-      uv: resolveFaceUV(cube, 'up', w, h),
+      uv: resolveFaceUV(cube, 'up', w, h, scaleU, scaleV),
     })
 
     // Left face (South, +Z)
@@ -278,7 +295,7 @@ function renderCustomGeometry(
       axisYEnd: isoProject(ox, oy, oz + sz),
       depth: (ox) + (oz + sz) - oy,
       brightness: 0.7,
-      uv: resolveFaceUV(cube, 'south', w, h),
+      uv: resolveFaceUV(cube, 'south', w, h, scaleU, scaleV),
     })
 
     // Right face (East, +X)
@@ -288,7 +305,7 @@ function renderCustomGeometry(
       axisYEnd: isoProject(ox + sx, oy, oz),
       depth: (ox + sx) + oz - oy,
       brightness: 0.55,
-      uv: resolveFaceUV(cube, 'east', w, h),
+      uv: resolveFaceUV(cube, 'east', w, h, scaleU, scaleV),
     })
   }
 
