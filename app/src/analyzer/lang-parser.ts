@@ -76,6 +76,19 @@ function parseLangText(text: string, map: LangMap) {
  *
  * IDs may have namespace (e.g. "mypack:sword") or not.
  */
+/**
+ * Strip '#' comment markers and Minecraft §-formatting codes from display names.
+ */
+export function sanitizeDisplayName(name: string): string {
+  // Strip Minecraft formatting codes (§ followed by any character)
+  let clean = name.replace(/§./g, '')
+  // Strip trailing inline comment (whitespace + # + anything)
+  clean = clean.replace(/\s+#.*$/, '').trim()
+  // Strip leading # characters and whitespace
+  clean = clean.replace(/^#+\s*/, '')
+  return clean || name
+}
+
 export function resolveDisplayName(langMap: LangMap, id: string, prefix: string): string | undefined {
   // In .lang files, namespace separator ':' is replaced with '.'
   // e.g. item ID "ntk:sword" -> lang key "item.ntk.sword.name"
@@ -90,7 +103,7 @@ export function resolveDisplayName(langMap: LangMap, id: string, prefix: string)
 
   for (const key of candidates) {
     const value = langMap.get(key)
-    if (value) return value
+    if (value) return sanitizeDisplayName(value)
   }
 
   return undefined

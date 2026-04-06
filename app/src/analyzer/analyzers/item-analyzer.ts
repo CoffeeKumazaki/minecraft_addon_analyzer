@@ -1,5 +1,6 @@
 import type { VirtualFS, ItemSpec, ItemStats, Diagnostic, ReferenceLink } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
+import { sanitizeDisplayName } from '@/analyzer/lang-parser'
 
 /**
  * Analyze item JSON files and extract ItemSpec[].
@@ -69,7 +70,7 @@ function extractItem(root: Record<string, unknown>, sourcePath: string): ItemSpe
 
   return {
     id,
-    title: desc.display_name ? String(desc.display_name) : undefined,
+    title: desc.display_name ? sanitizeDisplayName(String(desc.display_name)) : undefined,
     sourcePath,
     icon,
     tags: [],
