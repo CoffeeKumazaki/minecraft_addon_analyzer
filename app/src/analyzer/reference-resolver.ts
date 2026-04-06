@@ -1,4 +1,5 @@
 import type { ItemSpec, BlockSpec, EntitySpec, RecipeSpec, VirtualFS, FileIndex, Diagnostic } from '@/types'
+import type { GeometryMap } from './geometry-parser'
 
 /**
  * Resolve references between entities and check for broken references.
@@ -10,6 +11,7 @@ export function resolveReferences(
   _recipes: RecipeSpec[],
   files: VirtualFS,
   fileIndex: FileIndex,
+  geometryMap?: GeometryMap,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
 
@@ -30,6 +32,9 @@ export function resolveReferences(
   }
 
   const modelExists = (target: string): boolean => {
+    // Check parsed geometry identifiers first (authoritative)
+    if (geometryMap?.has(target)) return true
+    // Fallback to file path substring match
     const lower = target.toLowerCase()
     for (const m of modelFiles) {
       if (m.includes(lower)) return true

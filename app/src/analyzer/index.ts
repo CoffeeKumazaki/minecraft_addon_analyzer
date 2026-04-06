@@ -185,9 +185,16 @@ export async function analyzeAddon(
     entity.tags = [...entity.tags, ...applyEntityTags(entity)]
   }
 
-  // Step 7: Resolve references
-  onProgress?.('参照を解決中...', 80)
-  const refDiags = resolveReferences(items, blocks, entities, recipes, files, fileIndex)
+  // Step 7: Extract textures and parse geometries
+  onProgress?.('テクスチャを抽出中...', 80)
+  const textureMap = extractTextureMap(files, packPaths)
+
+  onProgress?.('ジオメトリを解析中...', 83)
+  const geometryMap = parseGeometries(files, fileIndex.models)
+
+  // Step 8: Resolve references (using parsed geometryMap for accurate resolution)
+  onProgress?.('参照を解決中...', 87)
+  const refDiags = resolveReferences(items, blocks, entities, recipes, files, fileIndex, geometryMap)
   allDiagnostics.push(...refDiags)
 
   // Collect diagnostics from all specs
@@ -195,13 +202,6 @@ export async function analyzeAddon(
   for (const block of blocks) allDiagnostics.push(...block.diagnostics)
   for (const entity of entities) allDiagnostics.push(...entity.diagnostics)
   for (const recipe of recipes) allDiagnostics.push(...recipe.diagnostics)
-
-  // Step 8: Extract textures and parse geometries
-  onProgress?.('テクスチャを抽出中...', 83)
-  const textureMap = extractTextureMap(files, packPaths)
-
-  onProgress?.('ジオメトリを解析中...', 87)
-  const geometryMap = parseGeometries(files, fileIndex.models)
 
   // Step 9: Generate summary
   onProgress?.('サマリーを生成中...', 90)
