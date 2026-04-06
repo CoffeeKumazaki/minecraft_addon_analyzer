@@ -5,13 +5,15 @@ import { FileText, AlertTriangle, ChefHat } from 'lucide-react'
 import { RecipeDiagram, RecipeIOBadge, RECIPE_TYPE_LABELS } from './shared/recipe-diagrams'
 import type { RecipeSpec } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
+import type { BlockRenderMap } from '@/hooks/use-recipe-lookup'
 
 type Props = {
   recipe: RecipeSpec
   textureMap: TextureMap | null
+  blockRenderMap?: BlockRenderMap | null
 }
 
-export function RecipeDetail({ recipe, textureMap }: Props) {
+export function RecipeDetail({ recipe, textureMap, blockRenderMap }: Props) {
   const typeLabel = RECIPE_TYPE_LABELS[recipe.recipeType] ?? recipe.recipeType
 
   return (
@@ -50,7 +52,7 @@ export function RecipeDetail({ recipe, textureMap }: Props) {
 
       {/* Recipe Diagram */}
       <SectionCard title="Recipe Diagram" icon={ChefHat}>
-        <RecipeDiagram recipe={recipe} textureMap={textureMap} />
+        <RecipeDiagram recipe={recipe} textureMap={textureMap} blockRenderMap={blockRenderMap} />
       </SectionCard>
 
       {/* Inputs Detail */}
@@ -59,7 +61,7 @@ export function RecipeDetail({ recipe, textureMap }: Props) {
           <div className="space-y-2">
             {recipe.inputs.map((io, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
-                <RecipeIOBadge io={io} textureMap={textureMap} />
+                <RecipeIOBadge io={io} textureMap={textureMap} blockRenderMap={blockRenderMap} />
               </div>
             ))}
           </div>
@@ -72,7 +74,7 @@ export function RecipeDetail({ recipe, textureMap }: Props) {
           <div className="space-y-2">
             {recipe.outputs.map((io, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
-                <RecipeIOBadge io={io} textureMap={textureMap} />
+                <RecipeIOBadge io={io} textureMap={textureMap} blockRenderMap={blockRenderMap} />
               </div>
             ))}
           </div>

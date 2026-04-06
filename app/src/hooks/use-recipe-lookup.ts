@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import type { RecipeSpec, ItemSpec, BlockSpec } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
+import type { GeometryMap, GeometryDef } from '@/analyzer/geometry-parser'
 import { loadVanillaTextureMap } from '@/lib/vanilla-sprites'
 
 export type RecipeLookup = {
@@ -102,4 +103,37 @@ export function useRecipeTextureMap(
 
     return combined
   }, [textureMap, items, blocks, vanillaMap])
+}
+
+export type BlockRenderInfo = {
+  src?: string
+  geometry?: GeometryDef
+}
+
+export type BlockRenderMap = Map<string, BlockRenderInfo>
+
+/**
+ * Build a map from block ID to rendering info (texture src + geometry)
+ * for isometric block display in recipe diagrams.
+ */
+export function useBlockRenderMap(
+  textureMap: TextureMap | null,
+  blocks: BlockSpec[],
+  geometryMap: GeometryMap | null,
+): BlockRenderMap {
+  return useMemo(() => {
+    const map: BlockRenderMap = new Map()
+    if (!textureMap) return map
+
+    for (const block of blocks) {
+      const src = block.textures[0] ? textureMap.get(block.textures[0]) : undefined
+      const geoRef = block.references.find(r => r.kind === 'geometry')
+      const geometry = geoRef && geometryMap ? geometryMap.get(geoRef.target) : undefined
+      const info: BlockRenderInfo = { src, geometry }
+      map.set(block.id, info)
+      map.set(normalizeId(block.id), info)
+    }
+
+    return map
+  }, [textureMap, blocks, geometryMap])
 }

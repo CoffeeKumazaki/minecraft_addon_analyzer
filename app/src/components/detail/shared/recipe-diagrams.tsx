@@ -1,9 +1,10 @@
 import { Badge } from '@/components/ui/badge'
-import { TextureThumbnail } from './thumbnails'
+import { TextureThumbnail, BlockThumbnail } from './thumbnails'
 import { Flame } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { RecipeSpec, RecipeIO } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
+import type { BlockRenderMap } from '@/hooks/use-recipe-lookup'
 
 export const RECIPE_TYPE_LABELS: Record<string, string> = {
   recipe_shaped: '定形レシピ',
@@ -20,8 +21,18 @@ function resolveTexture(textureMap: TextureMap | null, itemId: string): string |
   return textureMap.get(itemId) ?? textureMap.get(itemId.replace(/^[a-z_]+:/i, ''))
 }
 
+/** Resolve block render info by full ID or stripped ID */
+function resolveBlockRender(blockRenderMap: BlockRenderMap | null, itemId: string) {
+  if (!blockRenderMap) return undefined
+  return blockRenderMap.get(itemId) ?? blockRenderMap.get(itemId.replace(/^[a-z_]+:/i, ''))
+}
+
 /** Resolve item texture: textureMap (includes addon + vanilla) → text fallback */
-function ItemIcon({ itemId, textureMap, size }: { itemId: string; textureMap: TextureMap | null; size: number }) {
+function ItemIcon({ itemId, textureMap, blockRenderMap, size }: { itemId: string; textureMap: TextureMap | null; blockRenderMap?: BlockRenderMap | null; size: number }) {
+  const blockInfo = resolveBlockRender(blockRenderMap ?? null, itemId)
+  if (blockInfo) {
+    return <BlockThumbnail src={blockInfo.src} geometry={blockInfo.geometry} size={size} />
+  }
   const texSrc = resolveTexture(textureMap, itemId)
   if (texSrc) return <TextureThumbnail src={texSrc} size={size} />
   return (
@@ -40,19 +51,19 @@ function McArrow() {
   )
 }
 
-function McSlot({ io, textureMap, size = 32 }: { io?: RecipeIO; textureMap: TextureMap | null; size?: number }) {
+function McSlot({ io, textureMap, blockRenderMap, size = 32 }: { io?: RecipeIO; textureMap: TextureMap | null; blockRenderMap?: BlockRenderMap | null; size?: number }) {
   return (
     <div className="mc-slot" title={io?.item}>
-      {io && <ItemIcon itemId={io.item} textureMap={textureMap} size={size} />}
+      {io && <ItemIcon itemId={io.item} textureMap={textureMap} blockRenderMap={blockRenderMap} size={size} />}
     </div>
   )
 }
 
-function McOutputSlot({ io, textureMap }: { io?: RecipeIO; textureMap: TextureMap | null }) {
+function McOutputSlot({ io, textureMap, blockRenderMap }: { io?: RecipeIO; textureMap: TextureMap | null; blockRenderMap?: BlockRenderMap | null }) {
   return (
     <div className="relative">
       <div className="mc-slot-output" title={io?.item}>
-        {io && <ItemIcon itemId={io.item} textureMap={textureMap} size={36} />}
+        {io && <ItemIcon itemId={io.item} textureMap={textureMap} blockRenderMap={blockRenderMap} size={36} />}
       </div>
       {io?.count != null && io.count > 1 && (
         <span className="absolute -bottom-0.5 -right-0.5 text-[10px] font-bold text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
@@ -63,10 +74,10 @@ function McOutputSlot({ io, textureMap }: { io?: RecipeIO; textureMap: TextureMa
   )
 }
 
-export function RecipeIOBadge({ io, textureMap }: { io: RecipeIO; textureMap: TextureMap | null }) {
+export function RecipeIOBadge({ io, textureMap, blockRenderMap }: { io: RecipeIO; textureMap: TextureMap | null; blockRenderMap?: BlockRenderMap | null }) {
   return (
     <div className="inline-flex items-center gap-1 bg-muted rounded-md px-2 py-1">
-      <ItemIcon itemId={io.item} textureMap={textureMap} size={20} />
+      <ItemIcon itemId={io.item} textureMap={textureMap} blockRenderMap={blockRenderMap} size={20} />
       <span className="text-xs font-mono">{io.item}</span>
       {io.count != null && io.count > 1 && (
         <span className="text-xs text-muted-foreground">x{io.count}</span>
@@ -78,9 +89,11 @@ export function RecipeIOBadge({ io, textureMap }: { io: RecipeIO; textureMap: Te
   )
 }
 
-function ShapedRecipeGrid({ recipe, textureMap }: { recipe: RecipeSpec; textureMap: TextureMap | null }) {
+type DiagramProps = { recipe: RecipeSpec; textureMap: TextureMap | null; blockRenderMap?: BlockRenderMap | null }
+
+function ShapedRecipeGrid({ recipe, textureMap, blockRenderMap }: DiagramProps) {
   if (!recipe.pattern || !recipe.key) {
-    return <RecipeIOFlow inputs={recipe.inputs} outputs={recipe.outputs} textureMap={textureMap} />
+    return <RecipeIOFlow inputs={recipe.inputs} outputs={recipe.outputs} textureMap={textureMap} blockRenderMap={blockRenderMap} />
   }
 
   const rows = recipe.pattern.length
@@ -96,104 +109,104 @@ function ShapedRecipeGrid({ recipe, textureMap }: { recipe: RecipeSpec; textureM
           Array.from({ length: cols }).map((_, ci) => {
             const char = row[ci] ?? ' '
             const io = char !== ' ' ? recipe.key![char] : undefined
-            return <McSlot key={`${ri}-${ci}`} io={io} textureMap={textureMap} />
+            return <McSlot key={`${ri}-${ci}`} io={io} textureMap={textureMap} blockRenderMap={blockRenderMap} />
           })
         )}
       </div>
 
       <McArrow />
 
-      <McOutputSlot io={recipe.outputs[0]} textureMap={textureMap} />
+      <McOutputSlot io={recipe.outputs[0]} textureMap={textureMap} blockRenderMap={blockRenderMap} />
     </div>
   )
 }
 
-function FurnaceRecipeDiagram({ recipe, textureMap }: { recipe: RecipeSpec; textureMap: TextureMap | null }) {
+function FurnaceRecipeDiagram({ recipe, textureMap, blockRenderMap }: DiagramProps) {
   return (
     <div className="flex items-center gap-3">
-      <McSlot io={recipe.inputs[0]} textureMap={textureMap} />
+      <McSlot io={recipe.inputs[0]} textureMap={textureMap} blockRenderMap={blockRenderMap} />
       <Flame className="h-5 w-5 text-orange-500 shrink-0" />
       <McArrow />
-      <McOutputSlot io={recipe.outputs[0]} textureMap={textureMap} />
+      <McOutputSlot io={recipe.outputs[0]} textureMap={textureMap} blockRenderMap={blockRenderMap} />
     </div>
   )
 }
 
-function BrewingRecipeDiagram({ recipe, textureMap }: { recipe: RecipeSpec; textureMap: TextureMap | null }) {
+function BrewingRecipeDiagram({ recipe, textureMap, blockRenderMap }: DiagramProps) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <McSlot io={recipe.inputs[0]} textureMap={textureMap} />
+      <McSlot io={recipe.inputs[0]} textureMap={textureMap} blockRenderMap={blockRenderMap} />
       <span className="text-sm text-muted-foreground font-bold">+</span>
-      <McSlot io={recipe.inputs[1]} textureMap={textureMap} />
+      <McSlot io={recipe.inputs[1]} textureMap={textureMap} blockRenderMap={blockRenderMap} />
       <McArrow />
-      <McOutputSlot io={recipe.outputs[0]} textureMap={textureMap} />
+      <McOutputSlot io={recipe.outputs[0]} textureMap={textureMap} blockRenderMap={blockRenderMap} />
     </div>
   )
 }
 
-function SmithingRecipeDiagram({ recipe, textureMap }: { recipe: RecipeSpec; textureMap: TextureMap | null }) {
+function SmithingRecipeDiagram({ recipe, textureMap, blockRenderMap }: DiagramProps) {
   const [base, addition, template] = recipe.inputs
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {template && (
         <div className="text-center">
           <p className="text-[10px] text-muted-foreground mb-1">テンプレート</p>
-          <McSlot io={template} textureMap={textureMap} />
+          <McSlot io={template} textureMap={textureMap} blockRenderMap={blockRenderMap} />
         </div>
       )}
       {base && (
         <div className="text-center">
           <p className="text-[10px] text-muted-foreground mb-1">ベース</p>
-          <McSlot io={base} textureMap={textureMap} />
+          <McSlot io={base} textureMap={textureMap} blockRenderMap={blockRenderMap} />
         </div>
       )}
       <span className="text-sm text-muted-foreground font-bold">+</span>
       {addition && (
         <div className="text-center">
           <p className="text-[10px] text-muted-foreground mb-1">素材</p>
-          <McSlot io={addition} textureMap={textureMap} />
+          <McSlot io={addition} textureMap={textureMap} blockRenderMap={blockRenderMap} />
         </div>
       )}
       <McArrow />
-      <McOutputSlot io={recipe.outputs[0]} textureMap={textureMap} />
+      <McOutputSlot io={recipe.outputs[0]} textureMap={textureMap} blockRenderMap={blockRenderMap} />
     </div>
   )
 }
 
-function RecipeIOFlow({ inputs, outputs, textureMap }: { inputs: RecipeIO[]; outputs: RecipeIO[]; textureMap: TextureMap | null }) {
+function RecipeIOFlow({ inputs, outputs, textureMap, blockRenderMap }: { inputs: RecipeIO[]; outputs: RecipeIO[]; textureMap: TextureMap | null; blockRenderMap?: BlockRenderMap | null }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
       {inputs.map((inp, i) => (
         <span key={i} className="inline-flex items-center gap-1">
           {i > 0 && <span className="text-sm text-muted-foreground font-bold">+</span>}
-          <McSlot io={inp} textureMap={textureMap} />
+          <McSlot io={inp} textureMap={textureMap} blockRenderMap={blockRenderMap} />
         </span>
       ))}
       <McArrow />
       {outputs.map((out, i) => (
-        <McOutputSlot key={i} io={out} textureMap={textureMap} />
+        <McOutputSlot key={i} io={out} textureMap={textureMap} blockRenderMap={blockRenderMap} />
       ))}
     </div>
   )
 }
 
-export function RecipeDiagram({ recipe, textureMap }: { recipe: RecipeSpec; textureMap: TextureMap | null }) {
+export function RecipeDiagram({ recipe, textureMap, blockRenderMap }: DiagramProps) {
   switch (recipe.recipeType) {
     case 'recipe_shaped':
-      return <ShapedRecipeGrid recipe={recipe} textureMap={textureMap} />
+      return <ShapedRecipeGrid recipe={recipe} textureMap={textureMap} blockRenderMap={blockRenderMap} />
     case 'recipe_furnace':
-      return <FurnaceRecipeDiagram recipe={recipe} textureMap={textureMap} />
+      return <FurnaceRecipeDiagram recipe={recipe} textureMap={textureMap} blockRenderMap={blockRenderMap} />
     case 'recipe_brewing_mix':
     case 'recipe_brewing_container':
-      return <BrewingRecipeDiagram recipe={recipe} textureMap={textureMap} />
+      return <BrewingRecipeDiagram recipe={recipe} textureMap={textureMap} blockRenderMap={blockRenderMap} />
     case 'recipe_smithing_transform':
-      return <SmithingRecipeDiagram recipe={recipe} textureMap={textureMap} />
+      return <SmithingRecipeDiagram recipe={recipe} textureMap={textureMap} blockRenderMap={blockRenderMap} />
     default:
-      return <RecipeIOFlow inputs={recipe.inputs} outputs={recipe.outputs} textureMap={textureMap} />
+      return <RecipeIOFlow inputs={recipe.inputs} outputs={recipe.outputs} textureMap={textureMap} blockRenderMap={blockRenderMap} />
   }
 }
 
-export function RecipeCard({ recipe, textureMap }: { recipe: RecipeSpec; textureMap: TextureMap | null }) {
+export function RecipeCard({ recipe, textureMap, blockRenderMap }: { recipe: RecipeSpec; textureMap: TextureMap | null; blockRenderMap?: BlockRenderMap | null }) {
   const typeLabel = RECIPE_TYPE_LABELS[recipe.recipeType] ?? recipe.recipeType
   return (
     <div className="bg-muted/30 rounded-lg p-3 space-y-2">
@@ -205,7 +218,7 @@ export function RecipeCard({ recipe, textureMap }: { recipe: RecipeSpec; texture
           </Link>
         )}
       </div>
-      <RecipeDiagram recipe={recipe} textureMap={textureMap} />
+      <RecipeDiagram recipe={recipe} textureMap={textureMap} blockRenderMap={blockRenderMap} />
     </div>
   )
 }

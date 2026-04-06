@@ -12,6 +12,7 @@ import { useLanguage } from '@/context/language-context'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
 import type { ItemSpec, ItemStats } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
+import type { BlockRenderMap } from '@/hooks/use-recipe-lookup'
 
 function hasAnyItemStats(stats: ItemStats): boolean {
   return stats.damage != null || stats.durability != null || stats.maxStackSize != null
@@ -24,6 +25,7 @@ type Props = {
   item: ItemSpec
   textureMap: TextureMap | null
   recipeTextureMap: TextureMap | null
+  blockRenderMap?: BlockRenderMap | null
   recipeLookup: RecipeLookup | null
 }
 
@@ -36,7 +38,7 @@ function StatPill({ icon: Icon, iconColor, label, value }: { icon: React.Element
   )
 }
 
-export function ItemDetail({ item, textureMap, recipeTextureMap, recipeLookup }: Props) {
+export function ItemDetail({ item, textureMap, recipeTextureMap, blockRenderMap, recipeLookup }: Props) {
   const { t } = useLanguage()
   const iconSrc = item.icon ? textureMap?.get(item.icon) : undefined
   const obtainRecipes = recipeLookup ? lookupRecipesForId(recipeLookup, item.id, 'output') : []
@@ -84,7 +86,7 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, recipeLookup }:
         <SectionCard title="How to Obtain" icon={ChefHat} badge={`${obtainRecipes.length}`}>
           <div className="space-y-3">
             {obtainRecipes.map((recipe, i) => (
-              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} />
+              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />
             ))}
           </div>
         </SectionCard>
@@ -95,7 +97,7 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, recipeLookup }:
         <SectionCard title="Used In" icon={ArrowRightFromLine} badge={`${usedInRecipes.length}`}>
           <div className="space-y-3">
             {usedInRecipes.map((recipe, i) => (
-              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} />
+              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />
             ))}
           </div>
         </SectionCard>

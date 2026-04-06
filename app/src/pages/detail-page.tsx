@@ -5,7 +5,7 @@ import { ItemDetail } from '@/components/detail/item-detail'
 import { BlockDetail } from '@/components/detail/block-detail'
 import { EntityDetail } from '@/components/detail/entity-detail'
 import { RecipeDetail } from '@/components/detail/recipe-detail'
-import { useRecipeLookup, useRecipeTextureMap } from '@/hooks/use-recipe-lookup'
+import { useRecipeLookup, useRecipeTextureMap, useBlockRenderMap } from '@/hooks/use-recipe-lookup'
 import { useRequireAnalysis } from '@/hooks/use-require-analysis'
 import type { AnalysisResult } from '@/types'
 
@@ -35,6 +35,7 @@ export function DetailPage() {
   const { textureMap, geometryMap } = state
   const recipeLookup = useRecipeLookup(state.result?.recipes ?? [])
   const recipeTextureMap = useRecipeTextureMap(textureMap, state.result?.items ?? [], state.result?.blocks ?? [])
+  const blockRenderMap = useBlockRenderMap(textureMap, state.result?.blocks ?? [], geometryMap)
 
   if (!state.result || !category || !id) {
     return null
@@ -61,16 +62,16 @@ export function DetailPage() {
       </Link>
 
       {found.kind === 'item' && (
-        <ItemDetail item={found.data} textureMap={textureMap} recipeTextureMap={recipeTextureMap} recipeLookup={recipeLookup} />
+        <ItemDetail item={found.data} textureMap={textureMap} recipeTextureMap={recipeTextureMap} blockRenderMap={blockRenderMap} recipeLookup={recipeLookup} />
       )}
       {found.kind === 'block' && (
-        <BlockDetail block={found.data} textureMap={textureMap} recipeTextureMap={recipeTextureMap} geometryMap={geometryMap} recipeLookup={recipeLookup} />
+        <BlockDetail block={found.data} textureMap={textureMap} recipeTextureMap={recipeTextureMap} blockRenderMap={blockRenderMap} geometryMap={geometryMap} recipeLookup={recipeLookup} />
       )}
       {found.kind === 'entity' && (
         <EntityDetail entity={found.data} textureMap={textureMap} geometryMap={geometryMap} lootTables={state.result.lootTables} items={state.result.items} blocks={state.result.blocks} />
       )}
       {found.kind === 'recipe' && (
-        <RecipeDetail recipe={found.data} textureMap={recipeTextureMap} />
+        <RecipeDetail recipe={found.data} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />
       )}
     </div>
   )

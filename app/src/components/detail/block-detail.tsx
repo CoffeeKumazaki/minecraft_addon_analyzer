@@ -12,6 +12,7 @@ import type { BlockSpec, BlockStats } from '@/types'
 import { useLanguage } from '@/context/language-context'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
+import type { BlockRenderMap } from '@/hooks/use-recipe-lookup'
 
 function hasAnyBlockStats(stats: BlockStats): boolean {
   return stats.miningTime != null || stats.blastResistance != null
@@ -24,6 +25,7 @@ type Props = {
   block: BlockSpec
   textureMap: TextureMap | null
   recipeTextureMap: TextureMap | null
+  blockRenderMap?: BlockRenderMap | null
   geometryMap: GeometryMap | null
   recipeLookup: RecipeLookup | null
 }
@@ -46,7 +48,7 @@ function MapColorPill({ color }: { color: string }) {
   )
 }
 
-export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, recipeLookup }: Props) {
+export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMap, geometryMap, recipeLookup }: Props) {
   const { t } = useLanguage()
   const geoRef = block.references.find(r => r.kind === 'geometry')
   const geometry = geoRef ? geometryMap?.get(geoRef.target) : undefined
@@ -120,7 +122,7 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, 
         <SectionCard title="How to Obtain" icon={ChefHat} badge={`${obtainRecipes.length}`}>
           <div className="space-y-3">
             {obtainRecipes.map((recipe, i) => (
-              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} />
+              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />
             ))}
           </div>
         </SectionCard>
@@ -131,7 +133,7 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, geometryMap, 
         <SectionCard title="Used In" icon={ArrowRightFromLine} badge={`${usedInRecipes.length}`}>
           <div className="space-y-3">
             {usedInRecipes.map((recipe, i) => (
-              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} />
+              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />
             ))}
           </div>
         </SectionCard>
