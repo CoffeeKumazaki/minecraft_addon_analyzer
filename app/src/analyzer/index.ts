@@ -180,6 +180,10 @@ export async function analyzeAddon(
   }
   for (const block of blocks) {
     block.tags = applyBlockTags(block.components)
+    // Tag as custom_geo if geometry was found in permutations (not in top-level components)
+    if (!block.tags.includes('custom_geo') && block.references.some(r => r.kind === 'geometry')) {
+      block.tags.push('custom_geo')
+    }
   }
   for (const entity of entities) {
     entity.tags = [...entity.tags, ...applyEntityTags(entity)]

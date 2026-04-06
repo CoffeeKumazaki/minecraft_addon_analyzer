@@ -25,11 +25,23 @@ export type GeometryMap = Map<string, GeometryDef>
 /**
  * Parse geometry/model JSON files and extract cube definitions.
  * Supports both legacy (1.8.0) and new (1.12.0+) format.
+ * Scans modelPaths first, then all remaining JSON files in VFS
+ * to catch geometry files in non-standard directories.
  */
 export function parseGeometries(files: VirtualFS, modelPaths: string[]): GeometryMap {
   const map: GeometryMap = new Map()
 
-  for (const path of modelPaths) {
+  // Scan model paths first, then all remaining JSON files
+  // to catch geometry files in non-standard directories
+  const modelSet = new Set(modelPaths)
+  const allJsonPaths = [...modelPaths]
+  for (const [path] of files) {
+    if (path.endsWith('.json') && !modelSet.has(path)) {
+      allJsonPaths.push(path)
+    }
+  }
+
+  for (const path of allJsonPaths) {
     if (!path.endsWith('.json')) continue
     const data = files.get(path)
     if (!data) continue
@@ -58,14 +70,17 @@ export function parseGeometries(files: VirtualFS, modelPaths: string[]): Geometr
     }
 
     // Legacy format: geometry.xxx keys
+    // Legacy (1.8.0/1.10.0) uses "texturewidth"/"textureheight" (no underscore)
     for (const [key, value] of Object.entries(root)) {
       if (!key.startsWith('geometry.')) continue
       if (!value || typeof value !== 'object') continue
       const v = value as Record<string, unknown>
       const bones = v.bones
       if (!Array.isArray(bones)) continue
-      const tw = typeof v.texture_width === 'number' ? v.texture_width : undefined
-      const th = typeof v.texture_height === 'number' ? v.texture_height : undefined
+      const tw = typeof v.texture_width === 'number' ? v.texture_width
+        : typeof v.texturewidth === 'number' ? v.texturewidth : undefined
+      const th = typeof v.texture_height === 'number' ? v.texture_height
+        : typeof v.textureheight === 'number' ? v.textureheight : undefined
       map.set(key, { identifier: key, textureWidth: tw, textureHeight: th, cubes: extractCubesFromBones(bones) })
     }
   }

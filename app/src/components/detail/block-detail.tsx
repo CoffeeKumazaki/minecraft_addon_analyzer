@@ -61,7 +61,7 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
       <div className="border-2 border-border bg-card p-5">
         <div className="flex items-start gap-4">
           <BlockThumbnail
-            src={block.textures[0] ? textureMap?.get(block.textures[0]) : undefined}
+            src={block.textures.map(t => textureMap?.get(t)).find(s => s != null)}
             geometry={geometry}
             size={48}
           />

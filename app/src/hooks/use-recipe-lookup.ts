@@ -90,14 +90,12 @@ export function useRecipeTextureMap(
       }
     }
 
-    // 4. Map block IDs to their first texture
+    // 4. Map block IDs to their first resolvable texture
     for (const block of blocks) {
-      if (block.textures[0]) {
-        const url = textureMap.get(block.textures[0])
-        if (url) {
-          combined.set(block.id, url)
-          combined.set(normalizeId(block.id), url)
-        }
+      const url = block.textures.map(t => textureMap.get(t)).find(u => u != null)
+      if (url) {
+        combined.set(block.id, url)
+        combined.set(normalizeId(block.id), url)
       }
     }
 
@@ -126,7 +124,7 @@ export function useBlockRenderMap(
     if (!textureMap) return map
 
     for (const block of blocks) {
-      const src = block.textures[0] ? textureMap.get(block.textures[0]) : undefined
+      const src = block.textures.map(t => textureMap.get(t)).find(u => u != null)
       const geoRef = block.references.find(r => r.kind === 'geometry')
       const geometry = geoRef && geometryMap ? geometryMap.get(geoRef.target) : undefined
       const info: BlockRenderInfo = { src, geometry }

@@ -36,6 +36,39 @@ export function analyzeBlocks(files: VirtualFS, blockPaths: string[]): BlockSpec
   return blocks
 }
 
+function extractGeoId(geo: unknown): string | null {
+  if (!geo) return null
+  if (typeof geo === 'string') return geo || null
+  if (typeof geo === 'object') {
+    const obj = geo as Record<string, unknown>
+    const id = String(obj.identifier ?? obj.value ?? '')
+    return id || null
+  }
+  return null
+}
+
+function extractMaterialTextures(matInst: Record<string, unknown>): string[] {
+  const textures: string[] = []
+  for (const [, inst] of Object.entries(matInst)) {
+    if (inst && typeof inst === 'object' && 'texture' in (inst as Record<string, unknown>)) {
+      textures.push(String((inst as Record<string, unknown>).texture))
+    }
+  }
+  return textures
+}
+
+/** Scan permutations array and return the components of the first permutation that has the given key */
+function findInPermutations(blockDef: Record<string, unknown>, key: string): unknown | undefined {
+  const permutations = blockDef.permutations
+  if (!Array.isArray(permutations)) return undefined
+  for (const perm of permutations) {
+    if (!perm || typeof perm !== 'object') continue
+    const permComponents = (perm as Record<string, unknown>).components as Record<string, unknown> | undefined
+    if (permComponents && key in permComponents) return permComponents[key]
+  }
+  return undefined
+}
+
 function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockSpec | null {
   const blockDef = root['minecraft:block'] as Record<string, unknown> | undefined
   if (!blockDef) return null
@@ -45,18 +78,18 @@ function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockS
 
   const id = String(desc.identifier ?? 'unknown')
 
-  // Extract textures
+  // Extract textures (top-level, then fallback to permutations)
   const textures: string[] = []
   const references: ReferenceLink[] = []
 
-  const matInst = components['minecraft:material_instances'] as Record<string, unknown> | undefined
+  let matInst = components['minecraft:material_instances'] as Record<string, unknown> | undefined
+  if (!matInst) {
+    matInst = findInPermutations(blockDef, 'minecraft:material_instances') as Record<string, unknown> | undefined
+  }
   if (matInst) {
-    for (const [, inst] of Object.entries(matInst)) {
-      if (inst && typeof inst === 'object' && 'texture' in (inst as Record<string, unknown>)) {
-        const tex = String((inst as Record<string, unknown>).texture)
-        textures.push(tex)
-        references.push({ kind: 'texture', target: tex, resolved: false })
-      }
+    for (const tex of extractMaterialTextures(matInst)) {
+      textures.push(tex)
+      references.push({ kind: 'texture', target: tex, resolved: false })
     }
   }
 
@@ -67,13 +100,13 @@ function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockS
     states = Object.keys(statesDef as Record<string, unknown>)
   }
 
-  // Extract geometry
-  const geo = components['minecraft:geometry'] as string | Record<string, unknown> | undefined
-  if (geo) {
-    const geoId = typeof geo === 'string' ? geo : String((geo as Record<string, unknown>).identifier ?? (geo as Record<string, unknown>).value ?? '')
-    if (geoId) {
-      references.push({ kind: 'geometry', target: geoId, resolved: false })
-    }
+  // Extract geometry (top-level, then fallback to permutations)
+  let geoId = extractGeoId(components['minecraft:geometry'])
+  if (!geoId) {
+    geoId = extractGeoId(findInPermutations(blockDef, 'minecraft:geometry'))
+  }
+  if (geoId) {
+    references.push({ kind: 'geometry', target: geoId, resolved: false })
   }
 
   // Extract gameplay stats

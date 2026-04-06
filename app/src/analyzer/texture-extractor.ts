@@ -76,20 +76,20 @@ export function extractTextureMap(
  * Handles string, array of strings, and object with path field.
  */
 function resolveTexturePath(texField: unknown): string | null {
+  let raw: string | null = null
   if (typeof texField === 'string') {
-    return texField
-  }
-  if (Array.isArray(texField) && texField.length > 0) {
+    raw = texField
+  } else if (Array.isArray(texField) && texField.length > 0) {
     const first = texField[0]
-    if (typeof first === 'string') return first
-    if (first && typeof first === 'object' && 'path' in first) {
-      return String((first as Record<string, unknown>).path)
+    if (typeof first === 'string') raw = first
+    else if (first && typeof first === 'object' && 'path' in first) {
+      raw = String((first as Record<string, unknown>).path)
     }
+  } else if (texField && typeof texField === 'object' && 'path' in (texField as Record<string, unknown>)) {
+    raw = String((texField as Record<string, unknown>).path)
   }
-  if (texField && typeof texField === 'object' && 'path' in (texField as Record<string, unknown>)) {
-    return String((texField as Record<string, unknown>).path)
-  }
-  return null
+  // Strip file extension — tryCreateBlobUrl appends .png/.tga candidates
+  return raw ? raw.replace(/\.(png|tga)$/i, '') : null
 }
 
 /**
@@ -101,12 +101,20 @@ function tryCreateBlobUrl(
   packPath: string,
   texPath: string,
 ): string | null {
-  const candidates = [
-    packPath + texPath + '.png',
-    packPath + texPath + '.tga',
-    texPath + '.png',
-    texPath + '.tga',
-  ]
+  const hasExt = /\.(png|tga|jpg|jpeg)$/i.test(texPath)
+  const candidates = hasExt
+    ? [
+        packPath + texPath,
+        texPath,
+        packPath + texPath.replace(/\.[^.]+$/, '') + '.png',
+        packPath + texPath.replace(/\.[^.]+$/, '') + '.tga',
+      ]
+    : [
+        packPath + texPath + '.png',
+        packPath + texPath + '.tga',
+        texPath + '.png',
+        texPath + '.tga',
+      ]
 
   for (const candidate of candidates) {
     const data = files.get(candidate)
