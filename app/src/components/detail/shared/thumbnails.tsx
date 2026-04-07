@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react'
 import type { GeometryDef, GeometryCube, PerFaceUV } from '@/analyzer/geometry-parser'
+import type { BlockFaceSources } from '@/hooks/use-recipe-lookup'
 
 // Minecraft spawn egg base texture (16×16 grayscale egg silhouette with shading)
 const EGG_BASE_URL = 'data:image/webp;base64,UklGRsAAAABXRUJQVlA4TLMAAAAvn8AnEIXjRpIUaTw9/rUP7dIZgbMuHDMzmJDqOfj16CLmfwKCPzE1lDBfoE2HYRFqU89Pw35Tsg2LMIYS5gEuTW/hLPT8NOyHl/AV3sJTOA0JldDLm4XnkJzDddhv6uVpOAzX4aXpJuxPTKiEvt0yJKdwHNrEiRuhR9cPJyHZhv2JU5VCP45q2A/HYb9p/La1MPhoT60Vxh/dDL08Kk1T9cJa0+Dr+me2EtYmDn62f5YHBAA='
@@ -108,32 +109,58 @@ export function TextureThumbnail({ src, size = 32 }: { src?: string; size?: numb
   )
 }
 
-export function BlockThumbnail({ src, geometry, size = 40 }: { src?: string; geometry?: GeometryDef; size?: number }) {
+export function BlockThumbnail({ src, faceSrc, geometry, size = 40 }: { src?: string; faceSrc?: BlockFaceSources; geometry?: GeometryDef; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !src) return
+    let cancelled = false
 
     const dpr = window.devicePixelRatio || 1
     const res = Math.round(size * dpr)
     canvas.width = res
     canvas.height = res
 
-    const img = new Image()
-    img.onload = () => {
-      const ctx = canvas.getContext('2d')!
-      ctx.clearRect(0, 0, res, res)
-      ctx.imageSmoothingEnabled = false
-
-      if (geometry && geometry.cubes.length > 0) {
+    if (geometry && geometry.cubes.length > 0) {
+      const img = new Image()
+      img.onload = () => {
+        if (cancelled) return
+        const ctx = canvas.getContext('2d')!
+        ctx.clearRect(0, 0, res, res)
+        ctx.imageSmoothingEnabled = false
         renderCustomGeometry(ctx, img, geometry, res)
-      } else {
+      }
+      img.src = src
+    } else if (faceSrc && (faceSrc.top || faceSrc.left || faceSrc.right)) {
+      const urls = {
+        top: faceSrc.top ?? src,
+        left: faceSrc.left ?? src,
+        right: faceSrc.right ?? src,
+      }
+      const uniqueUrls = [...new Set(Object.values(urls))]
+      Promise.all(uniqueUrls.map(loadImg)).then(imgs => {
+        if (cancelled) return
+        const urlToImg = new Map(uniqueUrls.map((u, i) => [u, imgs[i]]))
+        const ctx = canvas.getContext('2d')!
+        ctx.clearRect(0, 0, res, res)
+        ctx.imageSmoothingEnabled = false
+        renderDefaultCubePerFace(ctx, urlToImg.get(urls.top)!, urlToImg.get(urls.left)!, urlToImg.get(urls.right)!, res)
+      })
+    } else {
+      const img = new Image()
+      img.onload = () => {
+        if (cancelled) return
+        const ctx = canvas.getContext('2d')!
+        ctx.clearRect(0, 0, res, res)
+        ctx.imageSmoothingEnabled = false
         renderDefaultCube(ctx, img, res)
       }
+      img.src = src
     }
-    img.src = src
-  }, [src, geometry, size])
+
+    return () => { cancelled = true }
+  }, [src, faceSrc?.top, faceSrc?.left, faceSrc?.right, geometry, size])
 
   if (!src) {
     return (
@@ -240,6 +267,35 @@ function renderDefaultCube(ctx: CanvasRenderingContext2D, img: HTMLImageElement,
   drawFace(ctx, img, top, topRight, topLeft, 1.0, fullUV)
   drawFace(ctx, img, topLeft, center, bottomLeft, 0.7, fullUV)
   drawFace(ctx, img, center, topRight, bottom, 0.55, fullUV)
+}
+
+/** Render standard isometric cube with per-face textures */
+function renderDefaultCubePerFace(
+  ctx: CanvasRenderingContext2D,
+  topImg: HTMLImageElement,
+  leftImg: HTMLImageElement,
+  rightImg: HTMLImageElement,
+  size: number,
+) {
+  const s = size * 0.42
+  const cx = size / 2
+  const xStep = s * COS30
+  const yStep = s * SIN30
+  const sideH = s
+  const topY = (size - (2 * yStep + sideH)) / 2
+
+  const top = { x: cx, y: topY }
+  const topRight = { x: cx + xStep, y: topY + yStep }
+  const topLeft = { x: cx - xStep, y: topY + yStep }
+  const center = { x: cx, y: topY + 2 * yStep }
+  const bottomLeft = { x: cx - xStep, y: topLeft.y + sideH }
+  const bottom = { x: cx, y: center.y + sideH }
+
+  const fullUV = (img: HTMLImageElement): UVRect => ({ su: 0, sv: 0, sw: img.width, sh: img.height })
+
+  drawFace(ctx, topImg,   top,     topRight, topLeft,    1.0,  fullUV(topImg))
+  drawFace(ctx, leftImg,  topLeft, center,   bottomLeft, 0.7,  fullUV(leftImg))
+  drawFace(ctx, rightImg, center,  topRight, bottom,     0.55, fullUV(rightImg))
 }
 
 /** Project 3D point to 2D isometric coordinates */

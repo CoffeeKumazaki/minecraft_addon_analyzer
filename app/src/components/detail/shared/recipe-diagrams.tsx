@@ -31,7 +31,7 @@ function resolveBlockRender(blockRenderMap: BlockRenderMap | null, itemId: strin
 function ItemIcon({ itemId, textureMap, blockRenderMap, size }: { itemId: string; textureMap: TextureMap | null; blockRenderMap?: BlockRenderMap | null; size: number }) {
   const blockInfo = resolveBlockRender(blockRenderMap ?? null, itemId)
   if (blockInfo) {
-    return <BlockThumbnail src={blockInfo.src} geometry={blockInfo.geometry} size={size} />
+    return <BlockThumbnail src={blockInfo.src} faceSrc={blockInfo.faceSrc} geometry={blockInfo.geometry} size={size} />
   }
   const texSrc = resolveTexture(textureMap, itemId)
   if (texSrc) return <TextureThumbnail src={texSrc} size={size} />

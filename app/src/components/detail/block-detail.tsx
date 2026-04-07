@@ -62,6 +62,12 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
         <div className="flex items-start gap-4">
           <BlockThumbnail
             src={block.textures.map(t => textureMap?.get(t)).find(s => s != null)}
+            faceSrc={block.faceTextures ? (() => {
+              const ft = block.faceTextures!
+              const fb = ft['*']
+              const r = (f: string) => { const n = ft[f] ?? fb; return n ? textureMap?.get(n) : undefined }
+              return { top: r('up'), left: r('south'), right: r('east') }
+            })() : undefined}
             geometry={geometry}
             size={48}
           />

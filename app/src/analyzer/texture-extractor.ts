@@ -1,5 +1,6 @@
 import type { VirtualFS } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
+import { resolveTexturePath } from '@/lib/texture-utils'
 
 export type TextureMap = Map<string, string>
 
@@ -69,27 +70,6 @@ export function extractTextureMap(
   }
 
   return map
-}
-
-/**
- * Resolve the `textures` field from texture_data entry to a file path.
- * Handles string, array of strings, and object with path field.
- */
-function resolveTexturePath(texField: unknown): string | null {
-  let raw: string | null = null
-  if (typeof texField === 'string') {
-    raw = texField
-  } else if (Array.isArray(texField) && texField.length > 0) {
-    const first = texField[0]
-    if (typeof first === 'string') raw = first
-    else if (first && typeof first === 'object' && 'path' in first) {
-      raw = String((first as Record<string, unknown>).path)
-    }
-  } else if (texField && typeof texField === 'object' && 'path' in (texField as Record<string, unknown>)) {
-    raw = String((texField as Record<string, unknown>).path)
-  }
-  // Strip file extension — tryCreateBlobUrl appends .png/.tga candidates
-  return raw ? raw.replace(/\.(png|tga)$/i, '') : null
 }
 
 /**

@@ -5,7 +5,7 @@ import { ItemDetail } from '@/components/detail/item-detail'
 import { BlockDetail } from '@/components/detail/block-detail'
 import { EntityDetail } from '@/components/detail/entity-detail'
 import { RecipeDetail } from '@/components/detail/recipe-detail'
-import { useRecipeLookup, useRecipeTextureMap, useBlockRenderMap } from '@/hooks/use-recipe-lookup'
+import { useRecipeLookup, useVanillaTextureMap, useRecipeTextureMap, useBlockRenderMap } from '@/hooks/use-recipe-lookup'
 import { useRequireAnalysis } from '@/hooks/use-require-analysis'
 import type { AnalysisResult } from '@/types'
 
@@ -33,9 +33,10 @@ export function DetailPage() {
   }, [category, id])
 
   const { textureMap, geometryMap } = state
+  const vanillaMap = useVanillaTextureMap()
   const recipeLookup = useRecipeLookup(state.result?.recipes ?? [])
-  const recipeTextureMap = useRecipeTextureMap(textureMap, state.result?.items ?? [], state.result?.blocks ?? [])
-  const blockRenderMap = useBlockRenderMap(textureMap, state.result?.blocks ?? [], geometryMap)
+  const recipeTextureMap = useRecipeTextureMap(textureMap, state.result?.items ?? [], state.result?.blocks ?? [], vanillaMap)
+  const blockRenderMap = useBlockRenderMap(textureMap, state.result?.blocks ?? [], geometryMap, vanillaMap)
 
   if (!state.result || !category || !id) {
     return null

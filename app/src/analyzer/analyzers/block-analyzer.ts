@@ -57,6 +57,16 @@ function extractMaterialTextures(matInst: Record<string, unknown>): string[] {
   return textures
 }
 
+function extractFaceTextureMap(matInst: Record<string, unknown>): Record<string, string> {
+  const faceMap: Record<string, string> = {}
+  for (const [key, inst] of Object.entries(matInst)) {
+    if (inst && typeof inst === 'object' && 'texture' in (inst as Record<string, unknown>)) {
+      faceMap[key] = String((inst as Record<string, unknown>).texture)
+    }
+  }
+  return faceMap
+}
+
 /** Scan permutations array and return the components of the first permutation that has the given key */
 function findInPermutations(blockDef: Record<string, unknown>, key: string): unknown | undefined {
   const permutations = blockDef.permutations
@@ -86,10 +96,15 @@ function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockS
   if (!matInst) {
     matInst = findInPermutations(blockDef, 'minecraft:material_instances') as Record<string, unknown> | undefined
   }
+  let faceTextures: Record<string, string> | undefined
   if (matInst) {
     for (const tex of extractMaterialTextures(matInst)) {
       textures.push(tex)
       references.push({ kind: 'texture', target: tex, resolved: false })
+    }
+    const faceMap = extractFaceTextureMap(matInst)
+    if (Object.keys(faceMap).length > 0) {
+      faceTextures = faceMap
     }
   }
 
@@ -117,6 +132,7 @@ function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockS
     sourcePath,
     tags: [],
     textures,
+    faceTextures,
     states,
     components,
     stats,
