@@ -1,4 +1,4 @@
-import type { VirtualFS, EntitySpec, ReferenceLink, SpawnEggInfo } from '@/types'
+import type { VirtualFS, EntitySpec, SpawnEggInfo } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
 
 type ClientEntityInfo = {

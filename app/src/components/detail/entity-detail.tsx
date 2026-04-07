@@ -5,7 +5,7 @@ import { TextureThumbnail, BlockThumbnail, SpawnEggThumbnail } from './shared/th
 import {
   Link2, Heart, Zap,
   Brain, Calendar, Layers, Image,
-  Clapperboard, Scroll, MapPin, Egg, Package,
+  Clapperboard, MapPin, Egg, Package,
 } from 'lucide-react'
 import type { EntitySpec, SpawnEggInfo, LootTableSpec, ItemSpec, BlockSpec } from '@/types'
 import { useLanguage } from '@/context/language-context'

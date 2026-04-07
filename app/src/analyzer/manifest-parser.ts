@@ -14,14 +14,14 @@ export function parseManifest(packRoot: PackRoot): PackInfo {
   const modules: PackModule[] = rawModules.map(mod => ({
     type: String(mod.type ?? 'unknown'),
     uuid: String(mod.uuid ?? ''),
-    version: formatVersion(mod.version),
+    version: formatVersion(mod.version) ?? '',
     description: mod.description ? String(mod.description) : undefined,
     entry: mod.entry ? String(mod.entry) : undefined,
   }))
 
   const dependencies: DependencySpec[] = rawDeps.map(dep => ({
     uuid: String(dep.uuid ?? dep.module_name ?? ''),
-    version: formatVersion(dep.version),
+    version: formatVersion(dep.version) ?? '',
     moduleName: dep.module_name ? String(dep.module_name) : undefined,
   }))
 
