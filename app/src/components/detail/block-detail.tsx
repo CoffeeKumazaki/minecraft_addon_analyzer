@@ -5,7 +5,7 @@ import { BlockThumbnail, TextureThumbnail } from './shared/thumbnails'
 import { RecipeCard } from './shared/recipe-diagrams'
 import {
   Link2, Image, ToggleLeft, ChefHat, ArrowRightFromLine,
-  Pickaxe, Shield, Sun, SunDim, Snowflake, Flame, Palette, Hammer,
+  Pickaxe, Shield, Sun, SunDim, Snowflake, Flame, Hammer,
 } from 'lucide-react'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
 import type { BlockSpec, BlockStats } from '@/types'

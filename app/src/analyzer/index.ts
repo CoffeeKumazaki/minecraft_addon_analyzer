@@ -100,14 +100,14 @@ export async function analyzeAddon(
   for (const packPath of packPaths) {
     const iconData = files.get(packPath + 'pack_icon.png')
     if (iconData) {
-      addon.iconUrl = URL.createObjectURL(new Blob([iconData], { type: 'image/png' }))
+      addon.iconUrl = URL.createObjectURL(new Blob([iconData as BlobPart], { type: 'image/png' }))
       break
     }
   }
   if (!addon.iconUrl && isMcworld) {
     const worldIcon = files.get('world_icon.jpeg')
     if (worldIcon) {
-      addon.iconUrl = URL.createObjectURL(new Blob([worldIcon], { type: 'image/jpeg' }))
+      addon.iconUrl = URL.createObjectURL(new Blob([worldIcon as BlobPart], { type: 'image/jpeg' }))
     }
   }
 

@@ -63,7 +63,7 @@ export function extractTextureMap(
       const data = files.get(filePath)
       if (!data) break
       const mimeType = filePath.endsWith('.tga') ? 'image/x-tga' : 'image/png'
-      const blob = new Blob([data], { type: mimeType })
+      const blob = new Blob([data as BlobPart], { type: mimeType })
       map.set(relativePath, URL.createObjectURL(blob))
       break
     }
@@ -100,7 +100,7 @@ function tryCreateBlobUrl(
     const data = files.get(candidate)
     if (data) {
       const mimeType = candidate.endsWith('.tga') ? 'image/x-tga' : 'image/png'
-      const blob = new Blob([data], { type: mimeType })
+      const blob = new Blob([data as BlobPart], { type: mimeType })
       return URL.createObjectURL(blob)
     }
   }

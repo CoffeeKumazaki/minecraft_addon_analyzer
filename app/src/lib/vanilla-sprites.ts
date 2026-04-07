@@ -5,7 +5,6 @@
  * Also includes locally bundled Education Edition textures.
  */
 
-import { resolveTexturePath } from '@/lib/texture-utils'
 import { buildEducationTextureMap } from '@/lib/education-textures'
 import { parseJsonSafe } from '@/lib/json-parser'
 

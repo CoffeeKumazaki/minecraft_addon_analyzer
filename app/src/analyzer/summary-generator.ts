@@ -9,7 +9,7 @@ export function generateSummary(
   blocks: BlockSpec[],
   entities: EntitySpec[],
   recipes: RecipeSpec[],
-  diagnostics: Diagnostic[],
+  _diagnostics: Diagnostic[],
 ): SummarySpec {
   const parts: string[] = []
   const contentFocus: string[] = []

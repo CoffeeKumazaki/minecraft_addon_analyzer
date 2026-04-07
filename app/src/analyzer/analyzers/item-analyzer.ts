@@ -1,4 +1,4 @@
-import type { VirtualFS, ItemSpec, ItemStats, Diagnostic, ReferenceLink } from '@/types'
+import type { VirtualFS, ItemSpec, ItemStats, ReferenceLink } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
 import { sanitizeDisplayName } from '@/analyzer/lang-parser'
 
