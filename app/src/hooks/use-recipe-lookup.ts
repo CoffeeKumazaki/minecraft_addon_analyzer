@@ -126,7 +126,7 @@ export type BlockRenderMap = Map<string, BlockRenderInfo>
 
 /** Terrain texture names that are NOT actual block IDs (item textures or texture refs used by other blocks) */
 const VANILLA_BLOCK_EXCLUDES = new Set([
-  'honeycomb', 'bamboo', 'campfire', 'soul_campfire',
+  'honeycomb', 'bamboo', 'campfire', 'soul_campfire', 'sweet_berries',
 ])
 
 /** Manual per-face texture overrides for vanilla blocks where naming doesn't follow {block}_{face} convention.
