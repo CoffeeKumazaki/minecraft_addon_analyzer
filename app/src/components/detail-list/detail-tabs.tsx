@@ -91,7 +91,16 @@ function BlockList({ blocks, search, textureMap, geometryMap }: { blocks: BlockS
             <Card className="p-3 px-4 hover:bg-secondary/50 transition-colors border border-border-light rounded-none">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <BlockThumbnail src={block.textures.map(t => textureMap?.get(t)).find(s => s != null)} geometry={geometry} />
+                  <BlockThumbnail
+                    src={block.textures.map(t => textureMap?.get(t)).find(s => s != null)}
+                    faceSrc={block.faceTextures ? (() => {
+                      const ft = block.faceTextures!
+                      const fb = ft['*']
+                      const r = (f: string) => { const n = ft[f] ?? fb; return n ? textureMap?.get(n) : undefined }
+                      return { top: r('up'), left: r('south'), right: r('east') }
+                    })() : undefined}
+                    geometry={geometry}
+                  />
                   <div>
                     <span className="font-heading text-sm font-semibold">{block.title ?? block.id}</span>
                     {block.title && <span className="font-mono text-xs text-muted-foreground ml-2">{block.id}</span>}

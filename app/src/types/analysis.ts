@@ -96,6 +96,7 @@ export type BlockSpec = {
   sourcePath: string;
   tags: string[];
   textures: string[];
+  faceTextures?: Record<string, string>;
   states?: string[];
   components: Record<string, unknown>;
   stats: BlockStats;

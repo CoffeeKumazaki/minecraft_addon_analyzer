@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react'
 import type { RecipeSpec, ItemSpec, BlockSpec } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap, GeometryDef } from '@/analyzer/geometry-parser'
-import { loadVanillaTextureMap } from '@/lib/vanilla-sprites'
+import { loadVanillaTextureMap, getVanillaBlockNames } from '@/lib/vanilla-sprites'
 
 export type RecipeLookup = {
   outputRecipes: Map<string, RecipeSpec[]>
@@ -52,6 +52,17 @@ export function lookupRecipesForId(
 }
 
 /**
+ * Load and cache vanilla texture map.
+ */
+export function useVanillaTextureMap() {
+  const [vanillaMap, setVanillaMap] = useState<Map<string, string> | null>(null)
+  useEffect(() => {
+    loadVanillaTextureMap().then(setVanillaMap)
+  }, [])
+  return vanillaMap
+}
+
+/**
  * Build an augmented texture map that resolves recipe item IDs to texture URLs.
  * Combines: addon textureMap + item/block ID mappings + vanilla GitHub textures.
  */
@@ -59,12 +70,8 @@ export function useRecipeTextureMap(
   textureMap: TextureMap | null,
   items: ItemSpec[],
   blocks: BlockSpec[],
+  vanillaMap: Map<string, string> | null,
 ): TextureMap | null {
-  const [vanillaMap, setVanillaMap] = useState<Map<string, string> | null>(null)
-
-  useEffect(() => {
-    loadVanillaTextureMap().then(setVanillaMap)
-  }, [])
 
   return useMemo(() => {
     if (!textureMap) return null
@@ -103,8 +110,15 @@ export function useRecipeTextureMap(
   }, [textureMap, items, blocks, vanillaMap])
 }
 
+export type BlockFaceSources = {
+  top?: string
+  left?: string
+  right?: string
+}
+
 export type BlockRenderInfo = {
   src?: string
+  faceSrc?: BlockFaceSources
   geometry?: GeometryDef
 }
 
@@ -118,20 +132,49 @@ export function useBlockRenderMap(
   textureMap: TextureMap | null,
   blocks: BlockSpec[],
   geometryMap: GeometryMap | null,
+  vanillaMap: Map<string, string> | null,
 ): BlockRenderMap {
   return useMemo(() => {
     const map: BlockRenderMap = new Map()
     if (!textureMap) return map
 
+    // Addon blocks (with custom geometry support)
     for (const block of blocks) {
       const src = block.textures.map(t => textureMap.get(t)).find(u => u != null)
       const geoRef = block.references.find(r => r.kind === 'geometry')
       const geometry = geoRef && geometryMap ? geometryMap.get(geoRef.target) : undefined
-      const info: BlockRenderInfo = { src, geometry }
+
+      let faceSrc: BlockFaceSources | undefined
+      if (block.faceTextures) {
+        const ft = block.faceTextures
+        const fallback = ft['*']
+        const resolve = (face: string) => {
+          const texName = ft[face] ?? fallback
+          return texName ? textureMap.get(texName) : undefined
+        }
+        const top = resolve('up')
+        const left = resolve('south')
+        const right = resolve('east')
+        if (top || left || right) {
+          faceSrc = { top, left, right }
+        }
+      }
+
+      const info: BlockRenderInfo = { src, faceSrc, geometry }
       map.set(block.id, info)
       map.set(normalizeId(block.id), info)
     }
 
+    // Vanilla blocks as default cubes (lowest priority — don't override addon blocks)
+    if (vanillaMap) {
+      const blockNames = getVanillaBlockNames()
+      for (const name of blockNames) {
+        if (map.has(name)) continue
+        const src = vanillaMap.get(name)
+        if (src) map.set(name, { src })
+      }
+    }
+
     return map
-  }, [textureMap, blocks, geometryMap])
+  }, [textureMap, blocks, geometryMap, vanillaMap])
 }
