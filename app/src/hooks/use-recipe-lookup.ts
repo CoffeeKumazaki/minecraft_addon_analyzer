@@ -124,6 +124,34 @@ export type BlockRenderInfo = {
 
 export type BlockRenderMap = Map<string, BlockRenderInfo>
 
+/** Terrain texture names that are NOT actual block IDs (item textures or texture refs used by other blocks) */
+const VANILLA_BLOCK_EXCLUDES = new Set([
+  'honeycomb', 'bamboo', 'campfire', 'soul_campfire',
+])
+
+/** Manual per-face texture overrides for vanilla blocks where naming doesn't follow {block}_{face} convention.
+ *  left = south face (front-facing in iso view), right = east face */
+const VANILLA_BLOCK_FACES: Record<string, { top?: string; left?: string; right?: string }> = {
+  carved_pumpkin: { top: 'pumpkin_top', left: 'pumpkin_face_off', right: 'pumpkin_side' },
+  jack_o_lantern: { top: 'pumpkin_top', left: 'pumpkin_face_on', right: 'pumpkin_side' },
+  lit_pumpkin: { top: 'pumpkin_top', left: 'pumpkin_face_on', right: 'pumpkin_side' },
+  furnace: { top: 'furnace_top', left: 'furnace_front_off', right: 'furnace_side' },
+  blast_furnace: { top: 'blast_furnace_top', left: 'blast_furnace_front_off', right: 'blast_furnace_side' },
+  smoker: { top: 'smoker_top', left: 'smoker_front_off', right: 'smoker_side' },
+  barrel: { top: 'barrel_top' },
+  observer: { top: 'observer_top', left: 'observer_front', right: 'observer_side' },
+  piston: { top: 'piston_top_normal', left: 'piston_side' },
+  sticky_piston: { top: 'piston_top_sticky', left: 'piston_side' },
+  hay_block: { top: 'hayblock_top', left: 'hayblock_side' },
+  bone_block: { top: 'bone_block_top', left: 'bone_block_side' },
+  quartz_block: { top: 'quartz_block_top', left: 'quartz_block_side' },
+  basalt: { top: 'basalt_top', left: 'basalt_side' },
+  polished_basalt: { top: 'polished_basalt_top', left: 'polished_basalt_side' },
+  ancient_debris: { top: 'ancient_debris_top', left: 'ancient_debris_side' },
+  respawn_anchor: { top: 'respawn_anchor_top_off', left: 'respawn_anchor_side0' },
+  dried_kelp_block: { top: 'dried_kelp_top', left: 'dried_kelp_side_a' },
+}
+
 /**
  * Build a map from block ID to rendering info (texture src + geometry)
  * for isometric block display in recipe diagrams.
@@ -169,9 +197,25 @@ export function useBlockRenderMap(
     if (vanillaMap) {
       const blockNames = getVanillaBlockNames()
       for (const name of blockNames) {
-        if (map.has(name)) continue
+        if (map.has(name) || VANILLA_BLOCK_EXCLUDES.has(name)) continue
         const src = vanillaMap.get(name)
-        if (src) map.set(name, { src })
+        if (!src) continue
+
+        // Per-face textures: check manual overrides first, then try {name}_{face} convention
+        const manual = VANILLA_BLOCK_FACES[name]
+        const topSrc = (manual?.top ? vanillaMap.get(manual.top) : undefined) ?? vanillaMap.get(`${name}_top`)
+        const leftSrc = (manual?.left ? vanillaMap.get(manual.left) : undefined) ?? vanillaMap.get(`${name}_side`)
+        const rightSrc = (manual?.right ? vanillaMap.get(manual.right) : undefined) ?? vanillaMap.get(`${name}_side`)
+        let faceSrc: BlockFaceSources | undefined
+        if (topSrc || leftSrc || rightSrc) {
+          faceSrc = {
+            top: topSrc ?? src,
+            left: leftSrc ?? src,
+            right: rightSrc ?? src,
+          }
+        }
+
+        map.set(name, { src, faceSrc })
       }
     }
 

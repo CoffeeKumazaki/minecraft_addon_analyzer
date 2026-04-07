@@ -168,6 +168,9 @@ const MANUAL_ALIASES: Record<string, string> = {
   respawn_anchor: 'respawn_anchor_side0',
   campfire: 'campfire',
   soul_campfire: 'soul_campfire',
+  // Ranged weapons: state suffixed
+  bow: 'bow_standby',
+  crossbow: 'crossbow_standby',
   // Fish items: item ID vs texture naming
   cooked_cod: 'fish_cooked',
   raw_cod: 'fish_raw',
