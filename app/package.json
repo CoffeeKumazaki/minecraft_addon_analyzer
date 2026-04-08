@@ -1,7 +1,15 @@
 {
-  "name": "app",
+  "name": "minecraft-addon-analyzer",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "A client-side web tool that analyzes Minecraft Bedrock Edition add-on packages and generates detailed reports",
+  "license": "MIT",
+  "author": "CoffeeKumazaki",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CoffeeKumazaki/minecraft_addon_analyzer.git"
+  },
+  "homepage": "https://coffeekumazaki.github.io/minecraft_addon_analyzer/",
   "type": "module",
   "scripts": {
     "dev": "vite",
