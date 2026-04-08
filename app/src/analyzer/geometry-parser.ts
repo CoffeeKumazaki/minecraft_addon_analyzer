@@ -25,23 +25,11 @@ export type GeometryMap = Map<string, GeometryDef>
 /**
  * Parse geometry/model JSON files and extract cube definitions.
  * Supports both legacy (1.8.0) and new (1.12.0+) format.
- * Scans modelPaths first, then all remaining JSON files in VFS
- * to catch geometry files in non-standard directories.
  */
 export function parseGeometries(files: VirtualFS, modelPaths: string[]): GeometryMap {
   const map: GeometryMap = new Map()
 
-  // Scan model paths first, then all remaining JSON files
-  // to catch geometry files in non-standard directories
-  const modelSet = new Set(modelPaths)
-  const allJsonPaths = [...modelPaths]
-  for (const [path] of files) {
-    if (path.endsWith('.json') && !modelSet.has(path)) {
-      allJsonPaths.push(path)
-    }
-  }
-
-  for (const path of allJsonPaths) {
+  for (const path of modelPaths) {
     if (!path.endsWith('.json')) continue
     const data = files.get(path)
     if (!data) continue
