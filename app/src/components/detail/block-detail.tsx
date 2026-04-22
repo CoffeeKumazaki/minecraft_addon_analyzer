@@ -1,14 +1,13 @@
 import { Badge } from '@/components/ui/badge'
 import { SectionCard } from './shared/section-card'
-import { ReferenceList } from './shared/reference-list'
 import { BlockThumbnail, TextureThumbnail } from './shared/thumbnails'
 import { RecipeCard } from './shared/recipe-diagrams'
 import {
-  Link2, Image, ToggleLeft, ChefHat, ArrowRightFromLine,
-  Pickaxe, Shield, Sun, SunDim, Snowflake, Flame, Hammer,
+  ChefHat, ArrowRightFromLine, Package,
+  Pickaxe, Shield, Sun, SunDim, Snowflake, Flame, Hammer, MousePointerClick, Footprints,
 } from 'lucide-react'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
-import type { BlockSpec, BlockStats } from '@/types'
+import type { BlockSpec, BlockStats, LootTableSpec, ItemSpec } from '@/types'
 import { useLanguage } from '@/context/language-context'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
@@ -19,6 +18,7 @@ function hasAnyBlockStats(stats: BlockStats): boolean {
     || stats.lightEmission != null || stats.lightDampening != null
     || stats.friction != null || stats.flammable != null
     || stats.mapColor != null || stats.craftingTable != null
+    || stats.onInteract != null || stats.onStepOn != null || stats.onStepOff != null
 }
 
 type Props = {
@@ -28,6 +28,8 @@ type Props = {
   blockRenderMap?: BlockRenderMap | null
   geometryMap: GeometryMap | null
   recipeLookup: RecipeLookup | null
+  lootTables?: LootTableSpec[]
+  items?: ItemSpec[]
 }
 
 function StatPill({ icon: Icon, iconColor, label, value }: { icon: React.ElementType; iconColor: string; label: string; value: string | number }) {
@@ -48,7 +50,25 @@ function MapColorPill({ color }: { color: string }) {
   )
 }
 
-export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMap, geometryMap, recipeLookup }: Props) {
+function formatPercent(value: number): string {
+  const pct = value * 100
+  if (pct >= 100) return '100%'
+  if (pct >= 10) return `${Math.round(pct)}%`
+  if (pct >= 1) return `${pct.toFixed(1)}%`
+  return `${pct.toFixed(2)}%`
+}
+
+function formatCount(min: number, max: number): string {
+  if (min === max) return `${min}`
+  return `${min}–${max}`
+}
+
+function humanizeId(id: string): string {
+  const stripped = id.replace(/^(?:minecraft:|[^:]+:)/, '')
+  return stripped.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+}
+
+export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMap, geometryMap, recipeLookup, lootTables, items }: Props) {
   const { t } = useLanguage()
   const geoRef = block.references.find(r => r.kind === 'geometry')
   const geometry = geoRef ? geometryMap?.get(geoRef.target) : undefined
@@ -78,10 +98,7 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
                 <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{t(tag).toUpperCase()}</Badge>
               ))}
             </div>
-            <p className="text-[11px] text-muted-foreground font-mono">
-              {block.id}
-              {block.sourcePath && <> &middot; {block.sourcePath}</>}
-            </p>
+            <p className="text-[11px] text-muted-foreground font-mono">{block.id}</p>
             {hasAnyBlockStats(block.stats) && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {block.stats.miningTime != null && <StatPill icon={Pickaxe} iconColor="text-muted-foreground" label="MINE" value={`${block.stats.miningTime}s`} />}
@@ -92,36 +109,90 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
                 {block.stats.flammable != null && <StatPill icon={Flame} iconColor="text-chart-1" label="BURN" value={typeof block.stats.flammable === 'boolean' ? (block.stats.flammable ? 'Yes' : 'No') : `${block.stats.flammable.catchChance}/${block.stats.flammable.destroyChance}`} />}
                 {block.stats.mapColor != null && <MapColorPill color={block.stats.mapColor} />}
                 {block.stats.craftingTable != null && <StatPill icon={Hammer} iconColor="text-accent" label="TABLE" value={block.stats.craftingTable.tableName} />}
+                {block.stats.onInteract != null && <StatPill icon={MousePointerClick} iconColor="text-chart-4" label="INTERACT" value={block.stats.onInteract} />}
+                {block.stats.onStepOn != null && <StatPill icon={Footprints} iconColor="text-chart-4" label="STEP ON" value={block.stats.onStepOn} />}
+                {block.stats.onStepOff != null && <StatPill icon={Footprints} iconColor="text-muted-foreground" label="STEP OFF" value={block.stats.onStepOff} />}
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Textures */}
-      {block.textures.length > 0 && (
-        <SectionCard title="Textures" icon={Image} badge={`${block.textures.length}`}>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-3">
-            {block.textures.map((tex, i) => (
-              <div key={i} className="flex flex-col items-center gap-1">
-                <TextureThumbnail src={textureMap?.get(tex)} size={64} />
-                <span className="text-xs font-mono text-muted-foreground text-center break-all">{tex}</span>
+      {/* Block Drops */}
+      {block.lootTable && lootTables && lootTables.length > 0 && (() => {
+        const matched = lootTables.find(lt => {
+          const refNorm = block.lootTable!.replace(/\\/g, '/')
+          const srcNorm = lt.sourcePath.replace(/\\/g, '/')
+          return srcNorm.includes(refNorm) || srcNorm.endsWith(refNorm)
+        })
+        if (!matched) return null
+        const iconMap = new Map<string, string>()
+        if (items) {
+          for (const item of items) {
+            if (item.icon) iconMap.set(item.id, item.icon)
+          }
+        }
+        return (
+          <SectionCard title="Block Drops" icon={Package}>
+            {matched.pools.map((pool, pi) => (
+              <div key={pi} className="mb-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground">
+                    POOL {pi + 1}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    Rolls: {formatCount(pool.rollsMin, pool.rollsMax)}
+                  </span>
+                  {pool.conditions.length > 0 && (
+                    <span className="text-[10px] text-muted-foreground italic">
+                      ({pool.conditions.join(', ')})
+                    </span>
+                  )}
+                </div>
+                {pool.drops.length > 0 ? (
+                  <div className="border border-border-light">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-border-light bg-secondary/50">
+                          <th className="text-left px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground">ITEM</th>
+                          <th className="text-right px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground w-20">CHANCE</th>
+                          <th className="text-right px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground w-20">COUNT</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pool.drops.map((drop, di) => {
+                          const icon = iconMap.get(drop.item)
+                          const texSrc = icon ? textureMap?.get(icon) : undefined
+                          return (
+                            <tr key={di} className="border-b border-border-light last:border-b-0">
+                              <td className="px-3 py-1.5">
+                                <div className="flex items-center gap-2">
+                                  <TextureThumbnail src={texSrc} size={20} />
+                                  <span className="text-xs">{drop.title ?? humanizeId(drop.item)}</span>
+                                </div>
+                              </td>
+                              <td className="px-3 py-1.5 text-right">
+                                <span className={`font-heading text-xs font-semibold ${drop.chance >= 0.5 ? 'text-success' : drop.chance >= 0.1 ? 'text-accent' : 'text-muted-foreground'}`}>
+                                  {formatPercent(drop.chance)}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground">
+                                {formatCount(drop.countMin, drop.countMax)}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground italic">No drops</p>
+                )}
               </div>
             ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Block States */}
-      {block.states && block.states.length > 0 && (
-        <SectionCard title="Block States" icon={ToggleLeft} badge={`${block.states.length}`}>
-          <div className="flex flex-wrap gap-1">
-            {block.states.map(state => (
-              <Badge key={state} variant="outline" className="text-xs font-mono rounded-none border-border">{state}</Badge>
-            ))}
-          </div>
-        </SectionCard>
-      )}
+          </SectionCard>
+        )
+      })()}
 
       {/* How to Obtain */}
       {obtainRecipes.length > 0 && (
@@ -145,12 +216,6 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
         </SectionCard>
       )}
 
-      {/* References */}
-      {block.references.length > 0 && (
-        <SectionCard title="References" icon={Link2} badge={`${block.references.length}`}>
-          <ReferenceList references={block.references} />
-        </SectionCard>
-      )}
     </div>
   )
 }

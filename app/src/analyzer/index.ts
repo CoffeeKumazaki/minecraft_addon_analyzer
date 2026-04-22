@@ -8,6 +8,8 @@ import { analyzeBlocks } from './analyzers/block-analyzer'
 import { analyzeEntities } from './analyzers/entity-analyzer'
 import { analyzeRecipes } from './analyzers/recipe-analyzer'
 import { analyzeLootTables } from './analyzers/loot-table-analyzer'
+import { analyzeSpawnRules } from './analyzers/spawn-rule-analyzer'
+import { analyzeTrades } from './analyzers/trade-analyzer'
 import { mergeClientEntities } from './analyzers/client-entity-merger'
 import { applyEntityTags } from './tagging/entity-rules'
 import { applyItemTags } from './tagging/item-rules'
@@ -131,6 +133,12 @@ export async function analyzeAddon(
   onProgress?.('ルートテーブルを解析中...', 71)
   const lootTables = analyzeLootTables(files, fileIndex.lootTables)
 
+  onProgress?.('スポーンルールを解析中...', 72)
+  const spawnRules = analyzeSpawnRules(files, fileIndex.spawnRules)
+
+  onProgress?.('取引データを解析中...', 72)
+  const trades = analyzeTrades(files, fileIndex.trading)
+
   // Step 5b: Parse lang files and apply display names
   onProgress?.('テキストを解析中...', 71)
   const langMap = parseLangFiles(files, packPaths)
@@ -169,8 +177,35 @@ export async function analyzeAddon(
     }
   }
 
-  // Step 5c: Merge RP client entity info (textures, geometry, animations)
-  onProgress?.('クライアントエンティティを統合中...', 72)
+  // Step 5c: Link spawn rules to entities
+  for (const rule of spawnRules) {
+    const entity = entities.find(e => e.id === rule.entityId)
+    if (entity) {
+      entity.spawnRules.push(rule.sourcePath)
+    }
+  }
+
+  // Step 5c2: Link trades to entities via trade_table / economy_trade_table component
+  for (const entity of entities) {
+    const entityFile = files.get(entity.sourcePath)
+    if (!entityFile) continue
+    const text = new TextDecoder().decode(entityFile)
+    // Match both trade_table and economy_trade_table, with "table" field
+    const tradeTableMatch = text.match(/"minecraft:(?:economy_)?trade_table"\s*:\s*\{[^}]*"table"\s*:\s*"([^"]+)"/)
+    if (tradeTableMatch) {
+      const tablePath = tradeTableMatch[1]
+      const trade = trades.find(t => {
+        const tNorm = t.sourcePath.replace(/\\/g, '/')
+        return tNorm.includes(tablePath) || tNorm.endsWith(tablePath)
+      })
+      if (trade) {
+        trade.entityId = entity.id
+      }
+    }
+  }
+
+  // Step 5d: Merge RP client entity info (textures, geometry, animations)
+  onProgress?.('クライアントエンティティを統合中...', 73)
   mergeClientEntities(files, fileIndex.clientEntities, entities)
 
   // Step 6: Apply behavior tags
@@ -222,8 +257,8 @@ export async function analyzeAddon(
       entities,
       recipes,
       lootTables,
-      spawnRules: [],
-      trades: [],
+      spawnRules,
+      trades,
       scripts: [],
       assets: [],
       warnings: allDiagnostics,

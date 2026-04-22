@@ -142,8 +142,12 @@ function EntityList({ entities, search, textureMap, geometryMap }: { entities: E
                   <div>
                     <span className="font-heading text-sm font-semibold">{entity.title ?? entity.id}</span>
                     {entity.title && <span className="font-mono text-xs text-muted-foreground ml-2">{entity.id}</span>}
-                    {entity.health != null && (
-                      <span className="text-xs text-muted-foreground ml-2">HP: {entity.health}</span>
+                    {(entity.health != null || entity.attackDamage != null) && (
+                      <span className="text-xs text-muted-foreground ml-2">
+                        {entity.health != null && `HP: ${entity.health}`}
+                        {entity.health != null && entity.attackDamage != null && ' / '}
+                        {entity.attackDamage != null && `ATK: ${entity.attackDamage}`}
+                      </span>
                     )}
                   </div>
                 </div>

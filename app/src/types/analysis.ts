@@ -88,6 +88,9 @@ export type BlockStats = {
   flammable?: boolean | { catchChance: number; destroyChance: number };
   mapColor?: string;
   craftingTable?: { tableName: string; tags: string[] };
+  onInteract?: string;
+  onStepOn?: string;
+  onStepOff?: string;
 };
 
 export type BlockSpec = {
@@ -98,6 +101,7 @@ export type BlockSpec = {
   textures: string[];
   faceTextures?: Record<string, string>;
   states?: string[];
+  lootTable?: string;
   components: Record<string, unknown>;
   stats: BlockStats;
   references: ReferenceLink[];
@@ -118,6 +122,7 @@ export type EntitySpec = {
   family?: string[];
   tags: string[];
   health?: number;
+  attackDamage?: number;
   movement?: number;
   spawnEgg?: SpawnEggInfo;
   behaviors: string[];
@@ -173,18 +178,44 @@ export type LootTableSpec = {
   diagnostics: Diagnostic[];
 };
 
+export type SpawnCondition = {
+  biomes?: string[];
+  dimension?: string;
+  lightRange?: { min: number; max: number };
+  heightRange?: { min: number; max: number };
+  spawnsOnSurface?: boolean;
+  spawnsUnderground?: boolean;
+  spawnsUnderwater?: boolean;
+  spawnsOnGround?: boolean;
+  difficultyFilter?: { min?: string; max?: string };
+  weight?: number;
+  herdSize?: { min: number; max: number };
+  raw: string[];
+};
+
 export type SpawnRuleSpec = {
   id: string;
   sourcePath: string;
   entityId: string;
-  conditions: string[];
+  populationControl?: string;
+  conditions: SpawnCondition[];
   diagnostics: Diagnostic[];
+};
+
+export type TradeItem = {
+  item: string;
+  quantity?: number;
+  title?: string;
+};
+
+export type TradeTier = {
+  trades: { wants: TradeItem[]; gives: TradeItem[] }[];
 };
 
 export type TradeSpec = {
   sourcePath: string;
   entityId?: string;
-  tiers: number;
+  tiers: TradeTier[];
   diagnostics: Diagnostic[];
 };
 

@@ -55,6 +55,22 @@ function extractEntity(root: Record<string, unknown>, sourcePath: string): Entit
     }
   }
 
+  // Extract attack damage
+  let attackDamage: number | undefined
+  const attackComp = components['minecraft:attack'] as Record<string, unknown> | undefined
+  if (attackComp) {
+    const dmg = attackComp.damage
+    if (typeof dmg === 'number') {
+      attackDamage = dmg
+    } else if (Array.isArray(dmg) && dmg.length >= 2) {
+      // [min, max] format — use max
+      attackDamage = typeof dmg[1] === 'number' ? dmg[1] : dmg[0]
+    } else if (dmg && typeof dmg === 'object') {
+      const dmgObj = dmg as Record<string, number>
+      attackDamage = dmgObj.range_max ?? dmgObj.max ?? dmgObj.range_min ?? dmgObj.min
+    }
+  }
+
   // Extract movement speed
   let movement: number | undefined
   const movComp = components['minecraft:movement'] as Record<string, unknown> | undefined
@@ -144,6 +160,7 @@ function extractEntity(root: Record<string, unknown>, sourcePath: string): Entit
     family,
     tags,
     health,
+    attackDamage,
     movement,
     spawnEgg,
     behaviors,

@@ -124,6 +124,20 @@ function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockS
     references.push({ kind: 'geometry', target: geoId, resolved: false })
   }
 
+  // Extract loot table (can be string or { table: "..." })
+  let lootTable: string | undefined
+  const lootRaw = components['minecraft:loot']
+  if (typeof lootRaw === 'string') {
+    lootTable = lootRaw
+    references.push({ kind: 'loot_table', target: lootRaw, resolved: false })
+  } else if (lootRaw && typeof lootRaw === 'object') {
+    const lootComp = lootRaw as Record<string, unknown>
+    if (typeof lootComp.table === 'string') {
+      lootTable = lootComp.table
+      references.push({ kind: 'loot_table', target: lootComp.table, resolved: false })
+    }
+  }
+
   // Extract gameplay stats
   const stats = extractBlockStats(components)
 
@@ -134,6 +148,7 @@ function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockS
     textures,
     faceTextures,
     states,
+    lootTable,
     components,
     stats,
     references,
@@ -206,6 +221,22 @@ function extractBlockStats(components: Record<string, unknown>): BlockStats {
         tags: Array.isArray(tags) ? tags.map(String) : [],
       }
     }
+  }
+
+  // Interaction events
+  const onInteract = components['minecraft:on_interact'] as Record<string, unknown> | undefined
+  if (onInteract?.event && typeof onInteract.event === 'string') {
+    stats.onInteract = onInteract.event
+  }
+
+  const onStepOn = components['minecraft:on_step_on'] as Record<string, unknown> | undefined
+  if (onStepOn?.event && typeof onStepOn.event === 'string') {
+    stats.onStepOn = onStepOn.event
+  }
+
+  const onStepOff = components['minecraft:on_step_off'] as Record<string, unknown> | undefined
+  if (onStepOff?.event && typeof onStepOff.event === 'string') {
+    stats.onStepOff = onStepOff.event
   }
 
   return stats

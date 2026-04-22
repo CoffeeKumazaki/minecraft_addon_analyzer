@@ -1,22 +1,23 @@
 import { Badge } from '@/components/ui/badge'
 import { SectionCard } from './shared/section-card'
-import { ReferenceList } from './shared/reference-list'
 import { TextureThumbnail, BlockThumbnail, SpawnEggThumbnail } from './shared/thumbnails'
 import {
-  Link2, Heart, Zap,
-  Brain, Calendar, Layers, Image,
-  Clapperboard, MapPin, Egg, Package,
+  Heart, Zap, Sword, ArrowLeftRight,
+  Brain, MapPin, Egg, Package,
 } from 'lucide-react'
-import type { EntitySpec, SpawnEggInfo, LootTableSpec, ItemSpec, BlockSpec } from '@/types'
+import type { EntitySpec, SpawnEggInfo, LootTableSpec, SpawnRuleSpec, SpawnCondition, TradeSpec, ItemSpec, BlockSpec } from '@/types'
 import { useLanguage } from '@/context/language-context'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
+import { BEHAVIOR_DESCRIPTIONS, CATEGORY_LABELS, type BehaviorCategory } from '@/lib/behavior-descriptions'
 
 type Props = {
   entity: EntitySpec
   textureMap: TextureMap | null
   geometryMap: GeometryMap | null
   lootTables?: LootTableSpec[]
+  spawnRules?: SpawnRuleSpec[]
+  trades?: TradeSpec[]
   items?: ItemSpec[]
   blocks?: BlockSpec[]
 }
@@ -134,7 +135,6 @@ function LootDropsDisplay({ entity, lootTables, items, blocks, textureMap }: Loo
     <div className="space-y-3">
       {matchedTables.map((lt, ti) => (
         <div key={ti}>
-          <p className="text-[10px] font-mono text-muted-foreground mb-2">{lt.sourcePath}</p>
           {lt.pools.map((pool, pi) => (
             <div key={pi} className="mb-3">
               <div className="flex items-center gap-2 mb-1.5">
@@ -197,7 +197,65 @@ function LootDropsDisplay({ entity, lootTables, items, blocks, textureMap }: Loo
   )
 }
 
-export function EntityDetail({ entity, textureMap, geometryMap, lootTables, items, blocks }: Props) {
+function SpawnConditionDisplay({ condition, index }: { condition: SpawnCondition; index: number }) {
+  const parts: string[] = []
+
+  if (condition.spawnsOnSurface) parts.push('Surface')
+  if (condition.spawnsUnderground) parts.push('Underground')
+  if (condition.spawnsUnderwater) parts.push('Underwater')
+
+  if (condition.lightRange) {
+    const { min, max } = condition.lightRange
+    if (min === 0 && max <= 7) parts.push(`Dark (light 0–${max})`)
+    else if (min >= 8 && max === 15) parts.push(`Bright (light ${min}–15)`)
+    else parts.push(`Light ${min}–${max}`)
+  }
+
+  if (condition.heightRange) {
+    parts.push(`Y: ${condition.heightRange.min}–${condition.heightRange.max}`)
+  }
+
+  if (condition.difficultyFilter) {
+    const { min, max } = condition.difficultyFilter
+    if (min && min !== 'peaceful') parts.push(`Difficulty ≥ ${min}`)
+    if (max) parts.push(`Difficulty ≤ ${max}`)
+  }
+
+  if (condition.herdSize) {
+    const { min, max } = condition.herdSize
+    if (min === max) parts.push(`Group: ${min}`)
+    else parts.push(`Group: ${min}–${max}`)
+  }
+
+  if (condition.weight != null) {
+    parts.push(`Weight: ${condition.weight}`)
+  }
+
+  return (
+    <div className="border border-border-light p-3 space-y-1.5">
+      <span className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground">
+        CONDITION {index + 1}
+      </span>
+      {condition.biomes && condition.biomes.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          <span className="text-xs text-muted-foreground mr-1">Biomes:</span>
+          {condition.biomes.map(b => (
+            <Badge key={b} variant="outline" className="text-[10px] font-mono rounded-none border-border py-0">{b}</Badge>
+          ))}
+        </div>
+      )}
+      {parts.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {parts.map(p => (
+            <Badge key={p} variant="secondary" className="text-[10px] rounded-none py-0">{p}</Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function EntityDetail({ entity, textureMap, geometryMap, lootTables, spawnRules, trades, items, blocks }: Props) {
   const { t } = useLanguage()
   const texSrc = entity.textures[0] ? textureMap?.get(entity.textures[0]) : undefined
   const geoId = entity.geometries[0]
@@ -221,13 +279,11 @@ export function EntityDetail({ entity, textureMap, geometryMap, lootTables, item
                 <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{t(tag).toUpperCase()}</Badge>
               ))}
             </div>
-            <p className="text-[11px] text-muted-foreground font-mono">
-              {entity.id}
-              {entity.sourcePath && <> &middot; {entity.sourcePath}</>}
-            </p>
-            {(entity.health != null || entity.movement != null) && (
+            <p className="text-[11px] text-muted-foreground font-mono">{entity.id}</p>
+            {(entity.health != null || entity.attackDamage != null || entity.movement != null) && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {entity.health != null && <StatPill icon={Heart} iconColor="text-destructive" label="HP" value={entity.health} />}
+                {entity.attackDamage != null && <StatPill icon={Sword} iconColor="text-orange-500" label="ATK" value={entity.attackDamage} />}
                 {entity.movement != null && <StatPill icon={Zap} iconColor="text-accent" label="SPEED" value={entity.movement} />}
               </div>
             )}
@@ -267,108 +323,137 @@ export function EntityDetail({ entity, textureMap, geometryMap, lootTables, item
         </SectionCard>
       )}
 
-      {/* Textures & Models */}
-      {(entity.textures.length > 0 || entity.geometries.length > 0) && (
-        <SectionCard title="Textures / Models" icon={Image}>
-          {entity.textures.length > 0 && (
-            <div className="mb-3">
-              <h4 className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground mb-2">TEXTURES</h4>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-3">
-                {entity.textures.map((tex, i) => (
-                  <div key={i} className="flex flex-col items-center gap-1">
-                    <TextureThumbnail src={textureMap?.get(tex)} size={64} />
-                    <span className="text-xs font-mono text-muted-foreground text-center break-all">{tex}</span>
-                  </div>
-                ))}
-              </div>
+      {/* Trades */}
+      {trades && (() => {
+        const matched = trades.filter(tr => tr.entityId === entity.id)
+        if (matched.length === 0) return null
+        const totalTrades = matched.reduce((sum, tr) => sum + tr.tiers.reduce((s, tier) => s + tier.trades.length, 0), 0)
+        return (
+          <SectionCard title="Trades" icon={ArrowLeftRight} badge={`${totalTrades}`}>
+            <div className="space-y-3">
+              {matched.flatMap(tr => tr.tiers.map((tier, ti) => (
+                <div key={`${tr.sourcePath}-${ti}`}>
+                  <h4 className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground mb-1.5">
+                    TIER {ti + 1}
+                  </h4>
+                  {tier.trades.length > 0 ? (
+                    <div className="border border-border-light">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border-light bg-secondary/50">
+                            <th className="text-left px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground">WANTS</th>
+                            <th className="text-center px-2 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground w-8"></th>
+                            <th className="text-left px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground">GIVES</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tier.trades.map((trade, tradeIdx) => (
+                            <tr key={tradeIdx} className="border-b border-border-light last:border-b-0">
+                              <td className="px-3 py-1.5">
+                                <div className="flex flex-wrap gap-1">
+                                  {trade.wants.map((w, wi) => (
+                                    <span key={wi} className="text-xs">
+                                      {w.title ?? humanizeId(w.item)}
+                                      {w.quantity && w.quantity > 1 ? ` x${w.quantity}` : ''}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="px-2 py-1.5 text-center text-muted-foreground text-xs">&rarr;</td>
+                              <td className="px-3 py-1.5">
+                                <div className="flex flex-wrap gap-1">
+                                  {trade.gives.map((g, gi) => (
+                                    <span key={gi} className="text-xs font-semibold">
+                                      {g.title ?? humanizeId(g.item)}
+                                      {g.quantity && g.quantity > 1 ? ` x${g.quantity}` : ''}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No trades</p>
+                  )}
+                </div>
+              )))}
             </div>
-          )}
-          {entity.geometries.length > 0 && (
-            <div>
-              <h4 className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground mb-1">GEOMETRY</h4>
-              <div className="flex flex-wrap gap-1">
-                {entity.geometries.map(geo => (
-                  <Badge key={geo} variant="outline" className="text-xs font-mono rounded-none border-border">{geo}</Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </SectionCard>
-      )}
+          </SectionCard>
+        )
+      })()}
 
       {/* Behaviors */}
-      {entity.behaviors.length > 0 && (
-        <SectionCard title="AI Behaviors" icon={Brain} badge={`${entity.behaviors.length}`} defaultOpen={entity.behaviors.length <= 10}>
-          <div className="flex flex-wrap gap-1">
-            {entity.behaviors.map(b => (
-              <Badge key={b} variant="secondary" className="text-xs font-mono rounded-none">
-                {stripMinecraft(b)}
-              </Badge>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Events */}
-      {entity.events.length > 0 && (
-        <SectionCard title="Events" icon={Calendar} badge={`${entity.events.length}`} defaultOpen={false}>
-          <div className="flex flex-wrap gap-1">
-            {entity.events.map(e => (
-              <Badge key={e} variant="outline" className="text-xs font-mono rounded-none border-border">{e}</Badge>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Component Groups */}
-      {entity.componentGroups.length > 0 && (
-        <SectionCard title="Component Groups" icon={Layers} badge={`${entity.componentGroups.length}`} defaultOpen={false}>
-          <div className="flex flex-wrap gap-1">
-            {entity.componentGroups.map(cg => (
-              <Badge key={cg} variant="outline" className="text-xs font-mono rounded-none border-border">{cg}</Badge>
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Animations */}
-      {entity.animations.length > 0 && (
-        <SectionCard title="Animations" icon={Clapperboard} badge={`${entity.animations.length}`} defaultOpen={false}>
-          <div className="space-y-1">
-            {entity.animations.map(anim => {
-              const ref = entity.references.find(r => r.kind === 'animation' && r.target === anim)
-              return (
-                <div key={anim} className="flex items-center gap-2 text-sm">
-                  {ref ? (
-                    ref.resolved
-                      ? <span className="text-success text-xs">&#x2713;</span>
-                      : <span className="text-destructive text-xs">&#x2717;</span>
-                  ) : null}
-                  <span className="font-mono text-xs">{anim}</span>
+      {entity.behaviors.length > 0 && (() => {
+        const isJa = t('items') !== 'Items'
+        const grouped = new Map<string, { label: string; key: string }[]>()
+        const unknown: string[] = []
+        for (const b of entity.behaviors) {
+          const key = stripMinecraft(b)
+          const desc = BEHAVIOR_DESCRIPTIONS[key]
+          if (desc) {
+            const cat = desc.category
+            if (!grouped.has(cat)) grouped.set(cat, [])
+            grouped.get(cat)!.push({ label: isJa ? desc.ja : desc.en, key })
+          } else {
+            unknown.push(key)
+          }
+        }
+        const categoryOrder: BehaviorCategory[] = ['combat', 'movement', 'social', 'action', 'navigation']
+        return (
+          <SectionCard title={isJa ? 'AI の行動' : 'AI Behaviors'} icon={Brain} badge={`${entity.behaviors.length}`} defaultOpen={entity.behaviors.length <= 15}>
+            <div className="space-y-3">
+              {categoryOrder.map(cat => {
+                const items = grouped.get(cat)
+                if (!items || items.length === 0) return null
+                const catLabel = isJa ? CATEGORY_LABELS[cat].ja : CATEGORY_LABELS[cat].en
+                return (
+                  <div key={cat}>
+                    <h4 className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground mb-1">{catLabel.toUpperCase()}</h4>
+                    <div className="flex flex-wrap gap-1">
+                      {items.map(item => (
+                        <Badge key={item.key} variant="secondary" className="text-xs rounded-none" title={item.key}>
+                          {item.label}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+              {unknown.length > 0 && (
+                <div>
+                  <h4 className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground mb-1">{isJa ? 'その他' : 'OTHER'}</h4>
+                  <div className="flex flex-wrap gap-1">
+                    {unknown.map(b => (
+                      <Badge key={b} variant="outline" className="text-xs font-mono rounded-none border-border">
+                        {b}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
-              )
-            })}
-          </div>
-        </SectionCard>
-      )}
+              )}
+            </div>
+          </SectionCard>
+        )
+      })()}
 
       {/* Spawn Rules */}
-      {entity.spawnRules.length > 0 && (
-        <SectionCard title="Spawn Rules" icon={MapPin} badge={`${entity.spawnRules.length}`}>
-          <div className="space-y-1">
-            {entity.spawnRules.map(sr => (
-              <p key={sr} className="text-sm font-mono">{sr}</p>
-            ))}
-          </div>
-        </SectionCard>
-      )}
+      {entity.spawnRules.length > 0 && spawnRules && (() => {
+        const matched = spawnRules.filter(sr => sr.entityId === entity.id)
+        if (matched.length === 0) return null
+        return (
+          <SectionCard title="Spawn Rules" icon={MapPin} badge={`${matched.length}`}>
+            <div className="space-y-2">
+              {matched.flatMap(sr => sr.conditions.map((cond, ci) => (
+                <SpawnConditionDisplay key={`${sr.sourcePath}-${ci}`} condition={cond} index={ci} />
+              )))}
+            </div>
+          </SectionCard>
+        )
+      })()}
 
-      {/* References */}
-      {entity.references.length > 0 && (
-        <SectionCard title="References" icon={Link2} badge={`${entity.references.length}`} defaultOpen={false}>
-          <ReferenceList references={entity.references} />
-        </SectionCard>
-      )}
     </div>
   )
 }

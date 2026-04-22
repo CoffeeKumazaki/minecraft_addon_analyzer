@@ -1,10 +1,9 @@
 import { Badge } from '@/components/ui/badge'
 import { SectionCard } from './shared/section-card'
-import { ReferenceList } from './shared/reference-list'
 import { TextureThumbnail } from './shared/thumbnails'
 import { RecipeCard } from './shared/recipe-diagrams'
 import {
-  Link2, ChefHat, ArrowRightFromLine,
+  ChefHat, ArrowRightFromLine,
   Swords, Shield, Layers, Sparkles, Drumstick, Shirt, Flame,
   Crosshair, Timer, Gem, Hourglass,
 } from 'lucide-react'
@@ -57,11 +56,7 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, blockRenderMap,
                 <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{t(tag).toUpperCase()}</Badge>
               ))}
             </div>
-            <p className="text-[11px] text-muted-foreground font-mono">
-              {item.id}
-              {item.sourcePath && <> &middot; {item.sourcePath}</>}
-              {item.icon && <> &middot; {item.icon}</>}
-            </p>
+            <p className="text-[11px] text-muted-foreground font-mono">{item.id}</p>
             {hasAnyItemStats(item.stats) && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {item.stats.damage != null && <StatPill icon={Swords} iconColor="text-destructive" label="ATK" value={item.stats.damage} />}
@@ -100,13 +95,6 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, blockRenderMap,
               <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />
             ))}
           </div>
-        </SectionCard>
-      )}
-
-      {/* References */}
-      {item.references.length > 0 && (
-        <SectionCard title="References" icon={Link2} badge={`${item.references.length}`}>
-          <ReferenceList references={item.references} />
         </SectionCard>
       )}
     </div>

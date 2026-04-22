@@ -65,7 +65,8 @@ export function exportMarkdown(result: AnalysisResult): string {
     for (const entity of result.entities) {
       const tags = entity.tags.length > 0 ? ` [${entity.tags.join(', ')}]` : ''
       const hp = entity.health != null ? ` HP:${entity.health}` : ''
-      lines.push(`- \`${entity.id}\`${hp}${tags}`)
+      const atk = entity.attackDamage != null ? ` ATK:${entity.attackDamage}` : ''
+      lines.push(`- \`${entity.id}\`${hp}${atk}${tags}`)
 
       // Show loot drops if available
       if (entity.lootTables.length > 0 && result.lootTables.length > 0) {
