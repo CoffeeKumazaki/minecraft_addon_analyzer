@@ -188,12 +188,7 @@ function extractBlockStats(components: Record<string, unknown>): BlockStats {
   }
 
   // Map color
-  const mapColor = components['minecraft:map_color']
-  if (typeof mapColor === 'string') stats.mapColor = mapColor
-  else if (Array.isArray(mapColor) && mapColor.length >= 3) {
-    const [r, g, b] = mapColor as number[]
-    stats.mapColor = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
-  }
+  Object.assign(stats, parseMapColor(components['minecraft:map_color']))
 
   // Crafting table
   const craft = components['minecraft:crafting_table'] as Record<string, unknown> | undefined
@@ -209,4 +204,24 @@ function extractBlockStats(components: Record<string, unknown>): BlockStats {
   }
 
   return stats
+}
+
+/**
+ * minecraft:map_color accepts "#RRGGBB", [R, G, B], or { color, tint_method }.
+ * Without this component the block does not show up on maps.
+ * Only the top-level component is read: map_color set in permutations depends on
+ * block state conditions, which are not evaluated.
+ */
+function parseMapColor(value: unknown): Pick<BlockStats, 'mapColor' | 'mapTintMethod'> {
+  if (typeof value === 'string') return { mapColor: value }
+  if (Array.isArray(value) && value.length >= 3) {
+    const [r, g, b] = value as number[]
+    return { mapColor: `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}` }
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>
+    const tint = typeof obj.tint_method === 'string' ? obj.tint_method : undefined
+    return { ...parseMapColor(obj.color), ...(tint ? { mapTintMethod: tint } : {}) }
+  }
+  return {}
 }

@@ -87,6 +87,7 @@ export type BlockStats = {
   friction?: number;
   flammable?: boolean | { catchChance: number; destroyChance: number };
   mapColor?: string;
+  mapTintMethod?: string;
   craftingTable?: { tableName: string; tags: string[] };
 };
 

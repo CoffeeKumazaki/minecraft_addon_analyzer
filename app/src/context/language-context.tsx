@@ -61,6 +61,16 @@ const translations: Record<string, Record<Language, string>> = {
   'state_change': { en: 'State Change', ja: '状態変化あり' },
   'interactive': { en: 'Interactive', ja: 'インタラクト可能' },
   'custom_geo': { en: 'Custom Geo', ja: '特殊形状' },
+  // World map
+  'map.title': { en: 'World Map', ja: 'ワールドマップ' },
+  'map.overworld': { en: 'Overworld', ja: 'オーバーワールド' },
+  'map.nether': { en: 'Nether', ja: 'ネザー' },
+  'map.end': { en: 'End', ja: 'エンド' },
+  'map.loading': { en: 'Opening world...', ja: 'ワールドを開いています...' },
+  'map.spawn': { en: 'Go to spawn', ja: 'スポーン地点へ' },
+  'map.hint': { en: 'Drag to pan, scroll to zoom', ja: 'ドラッグで移動・ホイールで拡大縮小' },
+  'map.tileError': { en: 'Failed to read some areas', ja: '読み込めなかった範囲があります' },
+  'map.retry': { en: 'Retry', ja: '再試行' },
 }
 
 function formatCount(count: number, type: 'items' | 'mobs', lang: Language): string {
