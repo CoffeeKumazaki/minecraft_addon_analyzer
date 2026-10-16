@@ -130,7 +130,7 @@ const VANILLA_BLOCK_EXCLUDES = new Set([
 ])
 
 /** Manual per-face texture overrides for vanilla blocks where naming doesn't follow {block}_{face} convention.
- *  left = south face (front-facing in iso view), right = east face */
+ *  Iso view is from the north-west: left = north face (front), right = west face */
 const VANILLA_BLOCK_FACES: Record<string, { top?: string; left?: string; right?: string }> = {
   carved_pumpkin: { top: 'pumpkin_top', left: 'pumpkin_face_off', right: 'pumpkin_side' },
   jack_o_lantern: { top: 'pumpkin_top', left: 'pumpkin_face_on', right: 'pumpkin_side' },
@@ -181,8 +181,8 @@ export function useBlockRenderMap(
           return texName ? textureMap.get(texName) : undefined
         }
         const top = resolve('up')
-        const left = resolve('south')
-        const right = resolve('east')
+        const left = resolve('north')
+        const right = resolve('west')
         if (top || left || right) {
           faceSrc = { top, left, right }
         }

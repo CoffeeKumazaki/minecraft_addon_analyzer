@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react'
-import type { GeometryDef, GeometryCube, PerFaceUV } from '@/analyzer/geometry-parser'
+import type { GeometryDef, Vec3 } from '@/analyzer/geometry-parser'
+import { computeWorldFaces } from '@/lib/bedrock-geometry'
 import type { BlockFaceSources } from '@/hooks/use-recipe-lookup'
 
 // Minecraft spawn egg base texture (16×16 grayscale egg silhouette with shading)
@@ -185,66 +186,6 @@ const SIN30 = Math.sin(Math.PI / 6)
 
 type UVRect = { su: number; sv: number; sw: number; sh: number }
 
-/**
- * Resolve UV rect for a face from box UV layout.
- * Bedrock box UV layout with origin [u,v] and cube size [w=sx, h=sy, d=sz]:
- *   Top row (height=d):  Up at (u+d, v, w, d)
- *   Bottom row (height=h): West(u,v+d,d,h) North(u+d,v+d,w,h) East(u+d+w,v+d,d,h) South(u+2d+w,v+d,w,h)
- */
-function boxUV(u: number, v: number, sx: number, sy: number, sz: number, face: 'up' | 'south' | 'east'): UVRect {
-  switch (face) {
-    case 'up':    return { su: u + sz, sv: v, sw: sx, sh: sz }
-    case 'south': return { su: u + 2 * sz + sx, sv: v + sz, sw: sx, sh: sy }
-    case 'east':  return { su: u + sz + sx, sv: v + sz, sw: sz, sh: sy }
-  }
-}
-
-/**
- * Resolve UV rect for a specific face of a cube.
- * UV coordinates are in geometry texture space; scaleU/scaleV converts to image pixel space.
- */
-function resolveFaceUV(
-  cube: GeometryCube,
-  face: 'up' | 'south' | 'east',
-  imgW: number,
-  imgH: number,
-  scaleU: number,
-  scaleV: number,
-): UVRect {
-  const [sx, sy, sz] = cube.size
-
-  if (!cube.uv) {
-    return { su: 0, sv: 0, sw: imgW, sh: imgH }
-  }
-
-  let rect: UVRect
-  if (Array.isArray(cube.uv)) {
-    rect = boxUV(cube.uv[0], cube.uv[1], sx, sy, sz, face)
-  } else {
-    // Per-face UV
-    const faceData = (cube.uv as PerFaceUV)[face]
-    if (faceData) {
-      let su = faceData.uv[0]
-      let sv = faceData.uv[1]
-      let sw = faceData.uvSize[0]
-      let sh = faceData.uvSize[1]
-      if (sw < 0) { su += sw; sw = -sw }
-      if (sh < 0) { sv += sh; sh = -sh }
-      rect = { su, sv, sw, sh }
-    } else {
-      return { su: 0, sv: 0, sw: imgW, sh: imgH }
-    }
-  }
-
-  // Scale from geometry texture space to actual image pixel space
-  return {
-    su: rect.su * scaleU,
-    sv: rect.sv * scaleV,
-    sw: rect.sw * scaleU,
-    sh: rect.sh * scaleV,
-  }
-}
-
 /** Render standard isometric cube (no geometry — uses full texture per face) */
 function renderDefaultCube(ctx: CanvasRenderingContext2D, img: HTMLImageElement, size: number) {
   const w = img.width
@@ -257,14 +198,14 @@ function renderDefaultCube(ctx: CanvasRenderingContext2D, img: HTMLImageElement,
   const sideH = s
   const topY = (size - (2 * yStep + sideH)) / 2
 
-  const top = { x: cx, y: topY }
   const topRight = { x: cx + xStep, y: topY + yStep }
   const topLeft = { x: cx - xStep, y: topY + yStep }
   const center = { x: cx, y: topY + 2 * yStep }
   const bottomLeft = { x: cx - xStep, y: topLeft.y + sideH }
   const bottom = { x: cx, y: center.y + sideH }
 
-  drawFace(ctx, img, top, topRight, topLeft, 1.0, fullUV)
+  // Top face: texture origin (north-west corner) is the diamond's bottom vertex when viewed from the north-west
+  drawFace(ctx, img, center, topLeft, topRight, 1.0, fullUV)
   drawFace(ctx, img, topLeft, center, bottomLeft, 0.7, fullUV)
   drawFace(ctx, img, center, topRight, bottom, 0.55, fullUV)
 }
@@ -284,7 +225,6 @@ function renderDefaultCubePerFace(
   const sideH = s
   const topY = (size - (2 * yStep + sideH)) / 2
 
-  const top = { x: cx, y: topY }
   const topRight = { x: cx + xStep, y: topY + yStep }
   const topLeft = { x: cx - xStep, y: topY + yStep }
   const center = { x: cx, y: topY + 2 * yStep }
@@ -293,130 +233,163 @@ function renderDefaultCubePerFace(
 
   const fullUV = (img: HTMLImageElement): UVRect => ({ su: 0, sv: 0, sw: img.width, sh: img.height })
 
-  drawFace(ctx, topImg,   top,     topRight, topLeft,    1.0,  fullUV(topImg))
+  drawFace(ctx, topImg,   center,  topLeft,  topRight,   1.0,  fullUV(topImg))
   drawFace(ctx, leftImg,  topLeft, center,   bottomLeft, 0.7,  fullUV(leftImg))
   drawFace(ctx, rightImg, center,  topRight, bottom,     0.55, fullUV(rightImg))
 }
 
-/** Project 3D point to 2D isometric coordinates */
-function isoProject(x: number, y: number, z: number): { x: number; y: number } {
+type Point = { x: number; y: number }
+
+/**
+ * Isometric projection of a scene-space point, viewed from the north-west:
+ * north faces end up bottom-left and west faces bottom-right.
+ */
+function isoProject([x, y, z]: Vec3): Point {
   return {
-    x: (x - z) * COS30,
-    y: (x + z) * SIN30 - y,
+    x: (z - x) * COS30,
+    y: -(x + z) * SIN30 - y,
   }
 }
 
-type IsoFace = {
-  origin: { x: number; y: number }
-  axisXEnd: { x: number; y: number }
-  axisYEnd: { x: number; y: number }
-  depth: number
-  brightness: number
-  uv: UVRect
-  flipU?: boolean
-  flipV?: boolean
+/** Direction towards the isometric camera (north-west, above) */
+const VIEW_DIR: Vec3 = [-1, 1, -1]
+/** Light weights so the top is brightest, north (left) slightly darker, west (right) darker still */
+const LIGHT_DIR: Vec3 = [-0.33, 1, -0.66]
+
+function dot(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-/** Render custom geometry as isometric projection with UV mapping */
+// Pixels with alpha below this are treated as cut out (matches the 3D viewer's alphaTest of 0.1)
+const ALPHA_CUTOFF = 26
+
+/** Texture pixels per image, read once and reused across thumbnails of the same image */
+const texelCache = new WeakMap<HTMLImageElement, ImageData | null>()
+function readTexels(img: HTMLImageElement): ImageData | null {
+  if (texelCache.has(img)) return texelCache.get(img)!
+  let data: ImageData | null = null
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = img.width
+    canvas.height = img.height
+    const tctx = canvas.getContext('2d')!
+    tctx.drawImage(img, 0, 0)
+    data = tctx.getImageData(0, 0, img.width, img.height)
+  } catch {
+    // Cross-origin or decode failure: nothing to sample
+    data = null
+  }
+  texelCache.set(img, data)
+  return data
+}
+
+/**
+ * Render custom geometry (entities and custom blocks) as an isometric projection.
+ * Uses the same bone/cube transforms and UV mapping as the 3D viewer, and rasterizes
+ * with a per-pixel depth buffer so overlapping parts, double-sided faces and
+ * cut-out texels resolve the same way they do in the viewer.
+ */
 function renderCustomGeometry(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement,
   geometry: GeometryDef,
   size: number,
 ) {
-  const w = img.width
-  const h = img.height
+  const faces = computeWorldFaces(geometry)
+  const texels = readTexels(img)
+  if (!faces || faces.length === 0 || !texels || size <= 0) return
+
   // Scale UV from geometry texture space to actual image pixels
-  const scaleU = geometry.textureWidth ? w / geometry.textureWidth : 1
-  const scaleV = geometry.textureHeight ? h / geometry.textureHeight : 1
+  const scaleU = geometry.textureWidth ? texels.width / geometry.textureWidth : 1
+  const scaleV = geometry.textureHeight ? texels.height / geometry.textureHeight : 1
 
-  const faces: IsoFace[] = []
-
-  for (const cube of geometry.cubes) {
-    const [ox, oy, oz] = cube.origin
-    const [sx, sy, sz] = cube.size
-
-    // Top face (Up) — UV V-axis is -Z but iso axisY is +Z → flipV
-    faces.push({
-      origin: isoProject(ox, oy + sy, oz),
-      axisXEnd: isoProject(ox + sx, oy + sy, oz),
-      axisYEnd: isoProject(ox, oy + sy, oz + sz),
-      depth: (ox + oz) - (oy + sy),
-      brightness: 1.0,
-      uv: resolveFaceUV(cube, 'up', w, h, scaleU, scaleV),
-      flipV: true,
-    })
-
-    // Left face (South, +Z) — UV U-axis is -X but iso axisX is +X → flipU
-    faces.push({
-      origin: isoProject(ox, oy + sy, oz + sz),
-      axisXEnd: isoProject(ox + sx, oy + sy, oz + sz),
-      axisYEnd: isoProject(ox, oy, oz + sz),
-      depth: (ox) + (oz + sz) - oy,
-      brightness: 0.7,
-      uv: resolveFaceUV(cube, 'south', w, h, scaleU, scaleV),
-      flipU: true,
-    })
-
-    // Right face (East, +X) — axes align, no flip needed
-    faces.push({
-      origin: isoProject(ox + sx, oy + sy, oz),
-      axisXEnd: isoProject(ox + sx, oy + sy, oz + sz),
-      axisYEnd: isoProject(ox + sx, oy, oz),
-      depth: (ox + sx) + oz - oy,
-      brightness: 0.55,
-      uv: resolveFaceUV(cube, 'east', w, h, scaleU, scaleV),
-    })
-  }
-
-  if (faces.length === 0) return
+  const projected = faces.map(f => ({
+    face: f,
+    points: f.corners.map(isoProject) as [Point, Point, Point, Point],
+  }))
 
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-  for (const face of faces) {
-    for (const v of [face.origin, face.axisXEnd, face.axisYEnd]) {
-      minX = Math.min(minX, v.x)
-      maxX = Math.max(maxX, v.x)
-      minY = Math.min(minY, v.y)
-      maxY = Math.max(maxY, v.y)
+  for (const { points } of projected) {
+    for (const p of points) {
+      minX = Math.min(minX, p.x)
+      maxX = Math.max(maxX, p.x)
+      minY = Math.min(minY, p.y)
+      maxY = Math.max(maxY, p.y)
     }
-    const fourth = {
-      x: face.axisXEnd.x + (face.axisYEnd.x - face.origin.x),
-      y: face.axisXEnd.y + (face.axisYEnd.y - face.origin.y),
-    }
-    minX = Math.min(minX, fourth.x)
-    maxX = Math.max(maxX, fourth.x)
-    minY = Math.min(minY, fourth.y)
-    maxY = Math.max(maxY, fourth.y)
   }
 
   const margin = size * 0.06
-  const availW = size - 2 * margin
-  const availH = size - 2 * margin
+  const avail = size - 2 * margin
   const rangeX = maxX - minX || 1
   const rangeY = maxY - minY || 1
-  const scale = Math.min(availW / rangeX, availH / rangeY)
-  const offsetX = margin + (availW - rangeX * scale) / 2 - minX * scale
-  const offsetY = margin + (availH - rangeY * scale) / 2 - minY * scale
+  const scale = Math.min(avail / rangeX, avail / rangeY)
+  const offsetX = margin + (avail - rangeX * scale) / 2 - minX * scale
+  const offsetY = margin + (avail - rangeY * scale) / 2 - minY * scale
 
-  const transform = (p: { x: number; y: number }) => ({
-    x: p.x * scale + offsetX,
-    y: p.y * scale + offsetY,
-  })
+  const out = ctx.createImageData(size, size)
+  // Larger = closer to the camera
+  const depthBuffer = new Float32Array(size * size).fill(-Infinity)
+  const src = texels.data
 
-  faces.sort((a, b) => a.depth - b.depth)
+  for (const { face, points } of projected) {
+    const [tl, tr, bl] = points.map(p => ({ x: p.x * scale + offsetX, y: p.y * scale + offsetY }))
+    const e1 = { x: tr.x - tl.x, y: tr.y - tl.y }
+    const e2 = { x: bl.x - tl.x, y: bl.y - tl.y }
+    const det = e1.x * e2.y - e2.x * e1.y
+    // Edge-on face: covers no pixels
+    if (Math.abs(det) < 1e-9) continue
 
-  for (const face of faces) {
-    drawFace(
-      ctx, img,
-      transform(face.origin),
-      transform(face.axisXEnd),
-      transform(face.axisYEnd),
-      face.brightness,
-      face.uv,
-      face.flipU,
-      face.flipV,
-    )
+    const depthTL = dot(face.corners[0], VIEW_DIR)
+    const dDepthS = dot(face.corners[1], VIEW_DIR) - depthTL
+    const dDepthT = dot(face.corners[2], VIEW_DIR) - depthTL
+    const [uvTL, uvTR, uvBL] = face.uvs
+    const du = { s: uvTR[0] - uvTL[0], t: uvBL[0] - uvTL[0] }
+    const dv = { s: uvTR[1] - uvTL[1], t: uvBL[1] - uvTL[1] }
+
+    // Faces are rendered double-sided like the viewer; shade the side facing the camera
+    const n = dot(face.normal, VIEW_DIR) >= 0 ? face.normal : face.normal.map(c => -c) as Vec3
+    const brightness = Math.min(1, 0.55 + 0.45 * Math.max(0, dot(n, LIGHT_DIR)))
+
+    const br = { x: tr.x + e2.x, y: tr.y + e2.y }
+    const x0 = Math.max(0, Math.floor(Math.min(tl.x, tr.x, bl.x, br.x)))
+    const x1 = Math.min(size - 1, Math.ceil(Math.max(tl.x, tr.x, bl.x, br.x)))
+    const y0 = Math.max(0, Math.floor(Math.min(tl.y, tr.y, bl.y, br.y)))
+    const y1 = Math.min(size - 1, Math.ceil(Math.max(tl.y, tr.y, bl.y, br.y)))
+
+    for (let py = y0; py <= y1; py++) {
+      for (let px = x0; px <= x1; px++) {
+        // Parallelogram coordinates of the pixel center
+        const dx = px + 0.5 - tl.x
+        const dy = py + 0.5 - tl.y
+        const s = (dx * e2.y - e2.x * dy) / det
+        const t = (e1.x * dy - dx * e1.y) / det
+        if (s < 0 || s > 1 || t < 0 || t > 1) continue
+
+        const idx = py * size + px
+        const depth = depthTL + s * dDepthS + t * dDepthT
+        if (depth <= depthBuffer[idx]) continue
+
+        // Keep samples strictly inside the face's UV rect
+        const sc = Math.min(Math.max(s, 1e-4), 1 - 1e-4)
+        const tc = Math.min(Math.max(t, 1e-4), 1 - 1e-4)
+        const u = (uvTL[0] + sc * du.s + tc * du.t) * scaleU
+        const v = (uvTL[1] + sc * dv.s + tc * dv.t) * scaleV
+        const tx = Math.min(texels.width - 1, Math.max(0, Math.floor(u)))
+        const ty = Math.min(texels.height - 1, Math.max(0, Math.floor(v)))
+        const si = (ty * texels.width + tx) * 4
+        if (src[si + 3] < ALPHA_CUTOFF) continue
+
+        depthBuffer[idx] = depth
+        const di = idx * 4
+        out.data[di] = src[si] * brightness
+        out.data[di + 1] = src[si + 1] * brightness
+        out.data[di + 2] = src[si + 2] * brightness
+        out.data[di + 3] = 255
+      }
+    }
   }
+
+  ctx.putImageData(out, 0, 0)
 }
 
 /**

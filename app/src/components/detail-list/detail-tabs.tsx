@@ -97,7 +97,7 @@ function BlockList({ blocks, search, textureMap, geometryMap }: { blocks: BlockS
                       const ft = block.faceTextures!
                       const fb = ft['*']
                       const r = (f: string) => { const n = ft[f] ?? fb; return n ? textureMap?.get(n) : undefined }
-                      return { top: r('up'), left: r('south'), right: r('east') }
+                      return { top: r('up'), left: r('north'), right: r('west') }
                     })() : undefined}
                     geometry={geometry}
                   />
