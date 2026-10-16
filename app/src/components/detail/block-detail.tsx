@@ -3,9 +3,10 @@ import { SectionCard } from './shared/section-card'
 import { ReferenceList } from './shared/reference-list'
 import { BlockThumbnail, TextureThumbnail } from './shared/thumbnails'
 import { RecipeCard } from './shared/recipe-diagrams'
+import { LazyModelViewer } from './shared/lazy-model-viewer'
 import {
   Link2, Image, ToggleLeft, ChefHat, ArrowRightFromLine,
-  Pickaxe, Shield, Sun, SunDim, Snowflake, Flame, Hammer,
+  Pickaxe, Shield, Sun, SunDim, Snowflake, Flame, Hammer, Box,
 } from 'lucide-react'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
 import type { BlockSpec, BlockStats } from '@/types'
@@ -13,6 +14,36 @@ import { useLanguage } from '@/context/language-context'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
 import type { BlockRenderMap } from '@/hooks/use-recipe-lookup'
+import type { CubeFaceTextures } from './shared/model-viewer'
+import { BOX_FACES, SIDE_FACES } from '@/lib/bedrock-geometry'
+
+/** View blocks from the north-west like the isometric thumbnails (north bottom-left, west bottom-right) */
+const BLOCK_CAMERA_DIRECTION: [number, number, number] = [-1, 0.8, -1]
+
+/** Resolve per-face texture URLs from material_instances ("sides" and "*" act as fallbacks) */
+function resolveCubeFaces(block: BlockSpec, textureMap: TextureMap | null): CubeFaceTextures | undefined {
+  if (!textureMap) return undefined
+  const ft = block.faceTextures ?? {}
+  const fallback = block.textures.map(t => textureMap.get(t)).find(s => s != null)
+  const faces: CubeFaceTextures = {}
+  for (const face of BOX_FACES) {
+    const name = ft[face] ?? (SIDE_FACES.has(face) ? ft.sides : undefined) ?? ft['*']
+    const src = (name ? textureMap.get(name) : undefined) ?? fallback
+    if (src) faces[face] = src
+  }
+  return Object.keys(faces).length > 0 ? faces : undefined
+}
+
+/** material_instances name → texture URL, for custom geometry faces */
+function resolveMaterialTextures(block: BlockSpec, textureMap: TextureMap | null): Record<string, string> | undefined {
+  if (!textureMap || !block.faceTextures) return undefined
+  const result: Record<string, string> = {}
+  for (const [name, tex] of Object.entries(block.faceTextures)) {
+    const src = textureMap.get(tex)
+    if (src) result[name] = src
+  }
+  return result
+}
 
 function hasAnyBlockStats(stats: BlockStats): boolean {
   return stats.miningTime != null || stats.blastResistance != null
@@ -54,6 +85,10 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
   const geometry = geoRef ? geometryMap?.get(geoRef.target) : undefined
   const obtainRecipes = recipeLookup ? lookupRecipesForId(recipeLookup, block.id, 'output') : []
   const usedInRecipes = recipeLookup ? lookupRecipesForId(recipeLookup, block.id, 'input') : []
+  const cubeFaces = geometry ? undefined : resolveCubeFaces(block, textureMap)
+  const materialTextures = geometry ? resolveMaterialTextures(block, textureMap) : undefined
+  // Prefer the "*" material as the default; otherwise any resolvable texture
+  const viewerTexture = materialTextures?.['*'] ?? block.textures.map(t => textureMap?.get(t)).find(s => s != null)
 
   return (
     <div className="space-y-5">
@@ -66,7 +101,7 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
               const ft = block.faceTextures!
               const fb = ft['*']
               const r = (f: string) => { const n = ft[f] ?? fb; return n ? textureMap?.get(n) : undefined }
-              return { top: r('up'), left: r('south'), right: r('east') }
+              return { top: r('up'), left: r('north'), right: r('west') }
             })() : undefined}
             geometry={geometry}
             size={48}
@@ -97,6 +132,15 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
           </div>
         </div>
       </div>
+
+      {/* 3D Model */}
+      {((geometry && geometry.cubes.length > 0) || cubeFaces) && (
+        <SectionCard title="3D Model" icon={Box}>
+          {geometry
+            ? <LazyModelViewer key={block.id} geometry={geometry} textureSrc={viewerTexture} materialTextures={materialTextures} cameraDirection={BLOCK_CAMERA_DIRECTION} />
+            : <LazyModelViewer key={block.id} cubeFaces={cubeFaces!} cameraDirection={BLOCK_CAMERA_DIRECTION} />}
+        </SectionCard>
+      )}
 
       {/* Textures */}
       {block.textures.length > 0 && (

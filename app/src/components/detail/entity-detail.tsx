@@ -1,14 +1,17 @@
+import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { SectionCard } from './shared/section-card'
 import { ReferenceList } from './shared/reference-list'
 import { TextureThumbnail, BlockThumbnail, SpawnEggThumbnail } from './shared/thumbnails'
+import { LazyModelViewer } from './shared/lazy-model-viewer'
 import {
   Link2, Heart, Zap,
   Brain, Calendar, Layers, Image,
-  Clapperboard, MapPin, Egg, Package,
+  Clapperboard, MapPin, Egg, Package, Box,
 } from 'lucide-react'
 import type { EntitySpec, SpawnEggInfo, LootTableSpec, ItemSpec, BlockSpec } from '@/types'
 import { useLanguage } from '@/context/language-context'
+import { cn } from '@/lib/utils'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
 
@@ -95,6 +98,70 @@ function resolveDropName(drop: { item: string; title?: string }): string {
   if (drop.title) return drop.title
   if (drop.item.startsWith('[table]')) return drop.item
   return humanizeId(drop.item)
+}
+
+function OptionSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) {
+  return (
+    <label className="flex items-center gap-1.5 text-xs">
+      <span className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground">{label}</span>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="border border-border bg-card px-1.5 py-0.5 font-mono text-xs"
+      >
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </label>
+  )
+}
+
+function EntityModelViewer({ geometryIds, textures, textureMap, geometryMap }: {
+  geometryIds: string[]
+  textures: string[]
+  textureMap: TextureMap | null
+  geometryMap: GeometryMap
+}) {
+  const [geoId, setGeoId] = useState(geometryIds[0])
+  const [textureIndex, setTextureIndex] = useState(0)
+  const geometry = geometryMap.get(geoId)
+  const texSrc = textures[textureIndex] ? textureMap?.get(textures[textureIndex]) : undefined
+
+  return (
+    <div className="space-y-2">
+      {geometryIds.length > 1 && (
+        <OptionSelect label="GEOMETRY" value={geoId} options={geometryIds} onChange={setGeoId} />
+      )}
+      <div className="flex flex-col md:flex-row gap-3">
+        <div className="flex-1 min-w-0">
+          {geometry && <LazyModelViewer geometry={geometry} textureSrc={texSrc} />}
+        </div>
+        {/* Texture variations: small previews of the same model with each texture */}
+        {textures.length > 1 && (
+          <div className="flex md:flex-col gap-2 overflow-auto md:max-h-[360px] md:w-[104px] shrink-0">
+            {textures.map((tex, i) => {
+              const selected = i === textureIndex
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setTextureIndex(i)}
+                  aria-pressed={selected}
+                  title={tex}
+                  className={cn(
+                    'flex flex-col items-center gap-1 p-1.5 border-2 cursor-pointer transition-colors shrink-0 w-[96px]',
+                    selected ? 'border-accent bg-accent/10' : 'border-border-light bg-card hover:bg-secondary/50',
+                  )}
+                >
+                  <BlockThumbnail src={textureMap?.get(tex)} geometry={geometry} size={56} />
+                  <span className="w-full truncate text-[10px] font-mono text-muted-foreground">{tex.split('/').pop()}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 type LootDropsDisplayProps = {
@@ -202,6 +269,7 @@ export function EntityDetail({ entity, textureMap, geometryMap, lootTables, item
   const texSrc = entity.textures[0] ? textureMap?.get(entity.textures[0]) : undefined
   const geoId = entity.geometries[0]
   const geometry = geoId ? geometryMap?.get(geoId) : undefined
+  const viewableGeometries = geometryMap ? entity.geometries.filter(g => geometryMap.get(g)?.cubes.length) : []
 
   return (
     <div className="space-y-5">
@@ -234,6 +302,19 @@ export function EntityDetail({ entity, textureMap, geometryMap, lootTables, item
           </div>
         </div>
       </div>
+
+      {/* 3D Model */}
+      {geometryMap && viewableGeometries.length > 0 && (
+        <SectionCard title="3D Model" icon={Box}>
+          <EntityModelViewer
+            key={entity.id}
+            geometryIds={viewableGeometries}
+            textures={entity.textures}
+            textureMap={textureMap}
+            geometryMap={geometryMap}
+          />
+        </SectionCard>
+      )}
 
       {/* Spawn Egg */}
       {entity.spawnEgg && (
