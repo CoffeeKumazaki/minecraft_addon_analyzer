@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Loader2, LocateFixed, Minus, Plus, RotateCw } from 'lucide-react'
 import { useLanguage } from '@/context/language-context'
-import { TILE_BLOCKS, NO_HEIGHT, MAX_COORDINATE, type Dimension, type TileResult, type WorldInfo } from '@/world/world-reader'
+import { TILE_BLOCKS, NO_HEIGHT, MAX_COORDINATE, MAX_LOD, type Dimension, type TileResult, type WorldInfo } from '@/world/world-reader'
 import type { MapWorkerRequest, MapWorkerResponse } from '@/world/map-worker'
 import type { CustomMapColor } from '@/world/block-colors'
 
@@ -13,6 +13,7 @@ type Props = {
 
 type TileEntry =
   | { status: 'pending'; id: number }
+  /** `tile` (hover data) is only present for full-detail tiles */
   | { status: 'ready'; bitmap: ImageBitmap | null; tile: TileResult | null }
   | { status: 'error'; message: string }
 
@@ -20,9 +21,12 @@ type View = { x: number; z: number; scale: number } // center in blocks, CSS px 
 
 type Hover = { x: number; z: number; y: number | null; block: string }
 
-const MIN_SCALE = 0.5
+/** Zoomed out as far as the coarsest level, where one tile pixel is 2^MAX_LOD blocks */
+const MIN_SCALE = 1 / 2 ** MAX_LOD
 const MAX_SCALE = 16
 const TILE_CACHE_LIMIT = 800
+/** How many finer levels to search for cached tiles while a tile is loading */
+const FALLBACK_DEPTH = 4
 /** Safety net: never enumerate more tiles than this in one frame */
 const MAX_VISIBLE_TILES = 2000
 const DIMENSIONS: { dim: Dimension; labelKey: string }[] = [
@@ -42,6 +46,7 @@ export function WorldMap({ file, customColors }: Props) {
   const viewRef = useRef<View>({ x: 0, z: 0, scale: 2 })
   const dimRef = useRef<Dimension>(0)
   const infoRef = useRef<WorldInfo | null>(null)
+  const targetRef = useRef<{ x: number; z: number; dim: Dimension } | null>(null) // last jumped-to block
   const drawQueuedRef = useRef(false)
 
   const [info, setInfo] = useState<WorldInfo | null>(null)
@@ -50,8 +55,10 @@ export function WorldMap({ file, customColors }: Props) {
   const [hover, setHover] = useState<Hover | null>(null)
   const [pendingCount, setPendingCount] = useState(0)
   const [tileError, setTileError] = useState<{ count: number; message: string } | null>(null)
+  const [jumpX, setJumpX] = useState('')
+  const [jumpZ, setJumpZ] = useState('')
 
-  const tileKey = (d: Dimension, tx: number, tz: number) => `${d}:${tx}:${tz}`
+  const tileKey = (d: Dimension, level: number, tx: number, tz: number) => `${d}:${level}:${tx}:${tz}`
 
   const draw = useCallback(() => {
     drawQueuedRef.current = false
@@ -74,17 +81,21 @@ export function WorldMap({ file, customColors }: Props) {
     ctx.fillStyle = '#1b1b1f'
     ctx.fillRect(0, 0, width, height)
 
-    // Keep the view inside the world border
-    const clamp = (v: number) => (Number.isFinite(v) ? Math.max(-MAX_COORDINATE, Math.min(MAX_COORDINATE, v)) : 0)
+    // Keep the view inside the world border (up to the far edge of the outermost blocks)
+    const limit = MAX_COORDINATE + 1
+    const clamp = (v: number) => (Number.isFinite(v) ? Math.max(-limit, Math.min(limit, v)) : 0)
     viewRef.current = { ...viewRef.current, x: clamp(viewRef.current.x), z: clamp(viewRef.current.z) }
     const { x, z, scale } = viewRef.current
     const d = dimRef.current
+    // Coarsest level whose pixels are still at least one screen pixel
+    const level = Math.max(0, Math.min(MAX_LOD, Math.floor(Math.log2(1 / scale) + 1e-9)))
+    const span = TILE_BLOCKS * 2 ** level // blocks covered by one tile
     const left = x - width / 2 / scale
     const top = z - height / 2 / scale
-    const tx0 = Math.floor(left / TILE_BLOCKS)
-    const tz0 = Math.floor(top / TILE_BLOCKS)
-    const tx1 = Math.floor((left + width / scale) / TILE_BLOCKS)
-    const tz1 = Math.floor((top + height / scale) / TILE_BLOCKS)
+    const tx0 = Math.floor(left / span)
+    const tz0 = Math.floor(top / span)
+    const tx1 = Math.floor((left + width / scale) / span)
+    const tz1 = Math.floor((top + height / scale) / span)
     const tileCount = (tx1 - tx0 + 1) * (tz1 - tz0 + 1)
     if (!Number.isFinite(tileCount) || tileCount > MAX_VISIBLE_TILES) return
 
@@ -94,34 +105,88 @@ export function WorldMap({ file, customColors }: Props) {
     const ctx2 = (tx0 + tx1) / 2
     const ctz2 = (tz0 + tz1) / 2
 
+    // Draw (part of) a tile bitmap over a world-space square, snapped to device pixels to avoid seams
+    const blit = (bitmap: ImageBitmap, bx: number, bz: number, blocks: number, src?: [number, number, number]) => {
+      const sx = (bx - left) * scale
+      const sy = (bz - top) * scale
+      const size = blocks * scale
+      const x0 = Math.floor(sx * dpr) / dpr
+      const y0 = Math.floor(sy * dpr) / dpr
+      const x1 = Math.ceil((sx + size) * dpr) / dpr
+      const y1 = Math.ceil((sy + size) * dpr) / dpr
+      if (src) ctx.drawImage(bitmap, src[0], src[1], src[2], src[2], x0, y0, x1 - x0, y1 - y0)
+      else ctx.drawImage(bitmap, x0, y0, x1 - x0, y1 - y0)
+    }
+    const readyBitmap = (key: string) => {
+      const entry = tiles.get(key)
+      return entry?.status === 'ready' ? entry.bitmap : null
+    }
+    // While a tile is loading, show what is already cached: a coarser ancestor, or finer children
+    const drawFallback = (tx: number, tz: number) => {
+      for (let up = 1; level + up <= MAX_LOD; up++) {
+        const f = 2 ** up
+        const atx = Math.floor(tx / f)
+        const atz = Math.floor(tz / f)
+        const bitmap = readyBitmap(tileKey(d, level + up, atx, atz))
+        if (!bitmap) continue
+        const sub = TILE_BLOCKS / f
+        blit(bitmap, tx * span, tz * span, span, [(tx - atx * f) * sub, (tz - atz * f) * sub, sub])
+        return
+      }
+      drawDescendants(level, tx, tz, FALLBACK_DEPTH)
+    }
+    // Finer cached tiles (e.g. after zooming out several levels at once), searched down a few levels
+    const drawDescendants = (lvl: number, tx: number, tz: number, depth: number) => {
+      if (lvl === 0 || depth === 0) return
+      const childSpan = (TILE_BLOCKS * 2 ** lvl) / 2
+      for (let q = 0; q < 4; q++) {
+        const childTx = tx * 2 + (q & 1)
+        const childTz = tz * 2 + (q >> 1)
+        const bitmap = readyBitmap(tileKey(d, lvl - 1, childTx, childTz))
+        if (bitmap) blit(bitmap, childTx * childSpan, childTz * childSpan, childSpan)
+        else drawDescendants(lvl - 1, childTx, childTz, depth - 1)
+      }
+    }
+
     for (let tz = tz0; tz <= tz1; tz++) {
       for (let tx = tx0; tx <= tx1; tx++) {
-        const key = tileKey(d, tx, tz)
+        const key = tileKey(d, level, tx, tz)
         visible.add(key)
         const entry = tiles.get(key)
         if (!entry) {
           missing.push({ tx, tz, dist: (tx - ctx2) ** 2 + (tz - ctz2) ** 2 })
+          drawFallback(tx, tz)
           continue
         }
         // Refresh LRU position
         tiles.delete(key)
         tiles.set(key, entry)
-        if (entry.status === 'ready' && entry.bitmap) {
-          const sx = (tx * TILE_BLOCKS - left) * scale
-          const sy = (tz * TILE_BLOCKS - top) * scale
-          const size = TILE_BLOCKS * scale
-          // Snap to device pixels to avoid seams between tiles
-          const x0 = Math.floor(sx * dpr) / dpr
-          const y0 = Math.floor(sy * dpr) / dpr
-          const x1 = Math.ceil((sx + size) * dpr) / dpr
-          const y1 = Math.ceil((sy + size) * dpr) / dpr
-          ctx.drawImage(entry.bitmap, x0, y0, x1 - x0, y1 - y0)
+        if (entry.status === 'ready') {
+          if (entry.bitmap) blit(entry.bitmap, tx * span, tz * span, span)
         } else if (entry.status === 'error') {
           // Unreadable data is shown distinctly, never as empty terrain
           ctx.fillStyle = 'rgba(200, 60, 60, 0.35)'
-          ctx.fillRect((tx * TILE_BLOCKS - left) * scale, (tz * TILE_BLOCKS - top) * scale, TILE_BLOCKS * scale, TILE_BLOCKS * scale)
+          ctx.fillRect((tx * span - left) * scale, (tz * span - top) * scale, span * scale, span * scale)
+        } else {
+          drawFallback(tx, tz)
         }
       }
+    }
+
+    // Jump target marker (crosshair on the block)
+    const target = targetRef.current
+    if (target && target.dim === d) {
+      const sx = (target.x + 0.5 - left) * scale
+      const sy = (target.z + 0.5 - top) * scale
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.moveTo(sx - 8, sy); ctx.lineTo(sx + 8, sy)
+      ctx.moveTo(sx, sy - 8); ctx.lineTo(sx, sy + 8)
+      ctx.stroke()
+      ctx.strokeStyle = '#2563eb'
+      ctx.lineWidth = 1.5
+      ctx.stroke()
     }
 
     // Spawn marker
@@ -152,10 +217,10 @@ export function WorldMap({ file, customColors }: Props) {
     missing.sort((a, b) => a.dist - b.dist)
     for (const { tx, tz } of missing) {
       const id = nextIdRef.current++
-      const key = tileKey(d, tx, tz)
+      const key = tileKey(d, level, tx, tz)
       tiles.set(key, { status: 'pending', id })
       pendingIdsRef.current.set(id, key)
-      worker.postMessage({ type: 'tile', id, dim: d, tx, tz } satisfies MapWorkerRequest)
+      worker.postMessage({ type: 'tile', id, dim: d, level, tx, tz } satisfies MapWorkerRequest)
     }
     setPendingCount(pendingIdsRef.current.size)
 
@@ -216,10 +281,12 @@ export function WorldMap({ file, customColors }: Props) {
       if (msg.type === 'error') {
         if (isCurrent()) failTile(key, msg.message)
       } else {
+        const tile = msg.type === 'tile' ? msg.tile : null
+        const pixels = msg.type === 'tile' ? msg.tile?.pixels : msg.pixels
         let bitmap: ImageBitmap | null = null
         try {
-          bitmap = msg.tile
-            ? await createImageBitmap(new ImageData(new Uint8ClampedArray(msg.tile.pixels), TILE_BLOCKS, TILE_BLOCKS))
+          bitmap = pixels
+            ? await createImageBitmap(new ImageData(new Uint8ClampedArray(pixels), TILE_BLOCKS, TILE_BLOCKS))
             : null
         } catch (e) {
           if (isCurrent()) failTile(key, e instanceof Error ? e.message : String(e))
@@ -230,7 +297,7 @@ export function WorldMap({ file, customColors }: Props) {
           bitmap?.close()
           return
         }
-        tiles.set(key, { status: 'ready', bitmap, tile: msg.tile })
+        tiles.set(key, { status: 'ready', bitmap, tile })
       }
       requestDraw()
     }
@@ -326,7 +393,8 @@ export function WorldMap({ file, customColors }: Props) {
     const bz = Math.floor(w.z)
     const tx = Math.floor(bx / TILE_BLOCKS)
     const tz = Math.floor(bz / TILE_BLOCKS)
-    const entry = tilesRef.current.get(tileKey(dimRef.current, tx, tz))
+    // Block details exist only in full-detail tiles; when zoomed out, show them if still cached
+    const entry = tilesRef.current.get(tileKey(dimRef.current, 0, tx, tz))
     let y: number | null = null
     let block = ''
     if (entry?.status === 'ready' && entry.tile) {
@@ -351,6 +419,20 @@ export function WorldMap({ file, customColors }: Props) {
     requestDraw()
   }
 
+  const parseCoordinate = (value: string): number | null => {
+    const n = Number(value.trim())
+    return value.trim() !== '' && Number.isInteger(n) && Math.abs(n) <= MAX_COORDINATE ? n : null
+  }
+  const jumpTarget = { x: parseCoordinate(jumpX), z: parseCoordinate(jumpZ) }
+  const canJump = jumpTarget.x !== null && jumpTarget.z !== null
+
+  const onJump = (e: FormEvent) => {
+    e.preventDefault()
+    if (jumpTarget.x === null || jumpTarget.z === null) return
+    targetRef.current = { x: jumpTarget.x, z: jumpTarget.z, dim }
+    goTo({ x: jumpTarget.x + 0.5, z: jumpTarget.z + 0.5 })
+  }
+
   const retryFailedTiles = () => {
     for (const [key, entry] of tilesRef.current) {
       if (entry.status === 'error') tilesRef.current.delete(key)
@@ -363,11 +445,32 @@ export function WorldMap({ file, customColors }: Props) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-heading text-sm font-semibold tracking-[1px]">
           {t('map.title').toUpperCase()}
           {info?.name && <span className="ml-2 text-muted-foreground normal-case tracking-normal">{info.name}</span>}
         </h2>
+        <form onSubmit={onJump} className="flex items-center gap-1 ml-auto font-mono text-xs">
+          {([['X', jumpX, setJumpX], ['Z', jumpZ, setJumpZ]] as const).map(([label, value, setValue]) => (
+            <label key={label} className="flex items-center gap-1">
+              <span className="text-muted-foreground">{label}</span>
+              <input
+                value={value}
+                onChange={e => setValue(e.target.value)}
+                inputMode="numeric"
+                aria-label={label}
+                className="w-20 h-7 px-2 border-2 border-border bg-transparent focus:outline-none focus:border-accent"
+              />
+            </label>
+          ))}
+          <button
+            type="submit"
+            disabled={!canJump || !info}
+            className="h-7 px-3 font-heading text-[10px] font-semibold tracking-[1px] bg-secondary hover:bg-border-light transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-default"
+          >
+            {t('map.jump').toUpperCase()}
+          </button>
+        </form>
         <div className="flex">
           {DIMENSIONS.map(({ dim: d, labelKey }) => (
             <button

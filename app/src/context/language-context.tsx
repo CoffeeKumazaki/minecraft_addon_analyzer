@@ -71,6 +71,7 @@ const translations: Record<string, Record<Language, string>> = {
   'map.hint': { en: 'Drag to pan, scroll to zoom', ja: 'ドラッグで移動・ホイールで拡大縮小' },
   'map.tileError': { en: 'Failed to read some areas', ja: '読み込めなかった範囲があります' },
   'map.retry': { en: 'Retry', ja: '再試行' },
+  'map.jump': { en: 'Go', ja: '移動' },
 }
 
 function formatCount(count: number, type: 'items' | 'mobs', lang: Language): string {

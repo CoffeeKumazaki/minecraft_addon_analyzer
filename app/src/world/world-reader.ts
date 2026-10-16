@@ -28,12 +28,32 @@ export type TileResult = {
   blockNames: string[];
 }
 
+/** Downsampled tile: TILE_BLOCKS × TILE_BLOCKS pixels covering (TILE_BLOCKS << level) blocks */
+export type LodTile = {
+  pixels: Uint8ClampedArray;
+}
+
 export const TILE_CHUNKS = 8
 export const TILE_BLOCKS = TILE_CHUNKS * 16
 export const NO_HEIGHT = -32768
+/** Coarsest zoom level: 1 pixel = 2^MAX_LOD blocks */
+export const MAX_LOD = 4
+/**
+ * From this level on, tiles read only every n-th chunk instead of being built
+ * from all chunks, which bounds reads per tile (an overview, not exact).
+ */
+const SAMPLED_FROM_LOD = 3
+
+export class RenderCancelled extends Error {
+  constructor() {
+    super('cancelled')
+  }
+}
 
 const SUBCHUNK_TAG = 0x2f
 const CHUNK_CACHE_LIMIT = 8192
+/** Downsampled tiles kept for zooming back in/out (64 KB each) */
+const LOD_CACHE_LIMIT = 1024
 const WATER_COLOR = blockColor('minecraft:water')
 
 type SubChunk = {
@@ -50,6 +70,7 @@ type ChunkColumns = {
 
 export class WorldReader {
   private readonly chunkCache = new Map<string, Promise<ChunkColumns | null>>()
+  private readonly lodCache = new Map<string, LodTile | null>()
 
   private readonly db: LevelDB
   private readonly resolveColor: (name: string) => ResolvedColor
@@ -169,6 +190,113 @@ export class WorldReader {
     return { pixels, heights: outHeights, blockIds, blockNames }
   }
 
+  /**
+   * Tile at zoom `level` (0 = full detail). Level k is built by averaging the four
+   * level k-1 tiles it covers, so zooming out reuses the same lazily read chunks.
+   * Children are rendered one at a time and `isCancelled` is checked between them.
+   */
+  async renderLod(dim: Dimension, level: number, tx: number, tz: number, isCancelled: () => boolean): Promise<LodTile | null> {
+    if (level <= 0) {
+      const tile = await this.renderTile(dim, tx, tz)
+      return tile && { pixels: tile.pixels }
+    }
+    const key = `${dim},${level},${tx},${tz}`
+    if (this.lodCache.has(key)) {
+      const cached = this.lodCache.get(key)!
+      this.lodCache.delete(key)
+      this.lodCache.set(key, cached)
+      return cached
+    }
+
+    let tile: LodTile | null
+    if (level >= SAMPLED_FROM_LOD) {
+      tile = await this.renderSampled(dim, level, tx, tz, isCancelled)
+    } else {
+      const children: (LodTile | null)[] = []
+      for (let q = 0; q < 4; q++) {
+        await yieldToEventLoop()
+        if (isCancelled()) throw new RenderCancelled()
+        children.push(await this.renderLod(dim, level - 1, tx * 2 + (q & 1), tz * 2 + (q >> 1), isCancelled))
+      }
+      if (isCancelled()) throw new RenderCancelled()
+      tile = children.some(c => c) ? { pixels: downsample(children) } : null
+    }
+    this.lodCache.set(key, tile)
+    if (this.lodCache.size > LOD_CACHE_LIMIT) {
+      this.lodCache.delete(this.lodCache.keys().next().value as string)
+    }
+    return tile
+  }
+
+  /**
+   * Overview tile that reads one chunk per `step × step` chunks and stretches it
+   * over that area. With step = 2^(level-2), every tile reads 32 × 32 chunks.
+   */
+  private async renderSampled(dim: Dimension, level: number, tx: number, tz: number, isCancelled: () => boolean): Promise<LodTile | null> {
+    const step = 2 ** (level - 2)
+    const tileChunks = TILE_CHUNKS * 2 ** level
+    const samples = tileChunks / step // per side
+    const cellPx = TILE_BLOCKS / samples // output pixels per sampled chunk, per side
+    const cx0 = tx * tileChunks
+    const cz0 = tz * tileChunks
+
+    const heights = new Int16Array(TILE_BLOCKS * TILE_BLOCKS).fill(NO_HEIGHT)
+    const rgb = new Uint8ClampedArray(TILE_BLOCKS * TILE_BLOCKS * 3)
+    let any = false
+    for (let j = 0; j < samples; j++) {
+      await yieldToEventLoop()
+      if (isCancelled()) throw new RenderCancelled()
+      const row = await Promise.all(Array.from({ length: samples }, (_, i) =>
+        this.loadChunk(dim, cx0 + i * step, cz0 + j * step)))
+      row.forEach((chunk, i) => {
+        if (!chunk) return
+        any = true
+        // Each output pixel averages the block of columns it covers in the sampled chunk
+        const cols = 16 / cellPx
+        for (let v = 0; v < cellPx; v++) {
+          for (let u = 0; u < cellPx; u++) {
+            let r = 0, g = 0, b = 0, h = 0, n = 0
+            for (let dz = 0; dz < cols; dz++) {
+              for (let dx = 0; dx < cols; dx++) {
+                const ci = (v * cols + dz) * 16 + u * cols + dx
+                if (chunk.heights[ci] === NO_HEIGHT) continue
+                r += chunk.rgb[ci * 3]; g += chunk.rgb[ci * 3 + 1]; b += chunk.rgb[ci * 3 + 2]
+                h += chunk.heights[ci]; n++
+              }
+            }
+            if (n === 0) continue
+            const di = (j * cellPx + v) * TILE_BLOCKS + i * cellPx + u
+            heights[di] = Math.round(h / n)
+            rgb[di * 3] = r / n
+            rgb[di * 3 + 1] = g / n
+            rgb[di * 3 + 2] = b / n
+          }
+        }
+      })
+    }
+    if (!any) return null
+
+    const pixels = new Uint8ClampedArray(TILE_BLOCKS * TILE_BLOCKS * 4)
+    for (let z = 0; z < TILE_BLOCKS; z++) {
+      for (let x = 0; x < TILE_BLOCKS; x++) {
+        const i = z * TILE_BLOCKS + x
+        const h = heights[i]
+        if (h === NO_HEIGHT) continue
+        // Same shading as full-detail tiles, against the neighboring output pixels
+        const hw = x > 0 ? heights[i - 1] : NO_HEIGHT
+        const hn = z > 0 ? heights[i - TILE_BLOCKS] : NO_HEIGHT
+        let shade = 1
+        if (hw !== NO_HEIGHT) shade += Math.max(-0.35, Math.min(0.35, (h - hw) * 0.08))
+        if (hn !== NO_HEIGHT) shade += Math.max(-0.25, Math.min(0.25, (h - hn) * 0.05))
+        pixels[i * 4] = rgb[i * 3] * shade
+        pixels[i * 4 + 1] = rgb[i * 3 + 1] * shade
+        pixels[i * 4 + 2] = rgb[i * 3 + 2] * shade
+        pixels[i * 4 + 3] = 255
+      }
+    }
+    return { pixels }
+  }
+
   private loadChunk(dim: Dimension, cx: number, cz: number): Promise<ChunkColumns | null> {
     const key = `${dim},${cx},${cz}`
     let chunk = this.chunkCache.get(key)
@@ -189,22 +317,72 @@ export class WorldReader {
     const prefix = chunkPrefix(dim, cx, cz)
     const entries = await this.db.getPrefix(prefix)
 
-    const subs: SubChunk[] = []
+    const raw: RawSubChunk[] = []
     for (const { key, value } of entries) {
       if (key.length !== prefix.length + 2 || key[prefix.length] !== SUBCHUNK_TAG) continue
-      const keyY = (key[prefix.length + 1] << 24) >> 24 // int8
-      let sub: SubChunk | null
+      raw.push({ keyY: (key[prefix.length + 1] << 24) >> 24, value }) // int8
+    }
+    if (raw.length === 0) return null
+    // Order by the Y the parser will use (v9 stores its own Y in the header)
+    raw.sort((a, b) => effectiveY(b) - effectiveY(a)) // top to bottom
+
+    // Subchunks are parsed lazily from the top; most columns end within the first few
+    const parse = (sub: RawSubChunk): SubChunk | null => {
       try {
-        sub = parseSubChunk(value, keyY)
+        return parseSubChunk(sub.value, sub.keyY)
       } catch (e) {
         // Corrupt data must not be rendered as empty terrain
-        throw new Error(`チャンク (${cx}, ${cz}) のサブチャンク Y=${keyY} が壊れています: ${e instanceof Error ? e.message : String(e)}`)
+        throw new Error(`チャンク (${cx}, ${cz}) のサブチャンク Y=${sub.keyY} が壊れています: ${e instanceof Error ? e.message : String(e)}`)
       }
-      if (sub) subs.push(sub)
     }
-    if (subs.length === 0) return null
-    return computeColumns(subs, dim, this.resolveColor)
+    return computeColumns(raw, parse, dim, this.resolveColor)
   }
+}
+
+/** Longest stretch of LOD work between yields, so cancel messages can reach the worker */
+const YIELD_INTERVAL_MS = 8
+let lastYield = 0
+
+/**
+ * Give the worker's event loop a chance to run (e.g. to receive a cancel message).
+ * Cached data resolves in microtasks, so awaiting it alone never yields.
+ */
+async function yieldToEventLoop(): Promise<void> {
+  const now = performance.now()
+  if (now - lastYield < YIELD_INTERVAL_MS) return
+  await new Promise<void>(resolve => setTimeout(resolve, 0))
+  lastYield = performance.now()
+}
+
+/** Combine four child tiles (NW, NE, SW, SE) into one tile at half resolution, averaging non-empty pixels. */
+function downsample(children: (LodTile | null)[]): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(TILE_BLOCKS * TILE_BLOCKS * 4)
+  const half = TILE_BLOCKS / 2
+  children.forEach((child, q) => {
+    if (!child) return
+    const ox = (q & 1) * half
+    const oz = (q >> 1) * half
+    const src = child.pixels
+    for (let z = 0; z < half; z++) {
+      for (let x = 0; x < half; x++) {
+        let r = 0, g = 0, b = 0, n = 0
+        for (let dz = 0; dz < 2; dz++) {
+          for (let dx = 0; dx < 2; dx++) {
+            const si = ((z * 2 + dz) * TILE_BLOCKS + x * 2 + dx) * 4
+            if (src[si + 3] === 0) continue
+            r += src[si]; g += src[si + 1]; b += src[si + 2]; n++
+          }
+        }
+        if (n === 0) continue
+        const di = ((oz + z) * TILE_BLOCKS + ox + x) * 4
+        out[di] = r / n
+        out[di + 1] = g / n
+        out[di + 2] = b / n
+        out[di + 3] = 255
+      }
+    }
+  })
+  return out
 }
 
 // ---------------------------------------------------------------------------
@@ -240,21 +418,10 @@ function parseSubChunk(value: Uint8Array, keyYIndex: number): SubChunk | null {
   // Only layer 0 is needed; layer 1 holds waterlogging
   const bits = value[pos++] >> 1
   if (!VALID_BITS.has(bits)) throw new Error(`未知のビット幅です (${bits})`)
-  const indices = new Uint16Array(4096)
-  if (bits > 0) {
-    const blocksPerWord = Math.floor(32 / bits)
-    const wordCount = Math.ceil(4096 / blocksPerWord)
-    const mask = (1 << bits) - 1
-    let bi = 0
-    for (let w = 0; w < wordCount; w++) {
-      let word = dv.getUint32(pos + w * 4, true)
-      for (let j = 0; j < blocksPerWord && bi < 4096; j++) {
-        indices[bi++] = word & mask
-        word >>>= bits
-      }
-    }
-    pos += wordCount * 4
-  }
+  const blocksPerWord = bits > 0 ? Math.floor(32 / bits) : 0
+  const wordCount = bits > 0 ? Math.ceil(4096 / blocksPerWord) : 0
+  const wordsPos = pos
+  pos += wordCount * 4
 
   // Single-entry palettes (bits = 0) omit the count on disk; tolerate writers that include it
   let paletteCount = 1
@@ -263,19 +430,50 @@ function parseSubChunk(value: Uint8Array, keyYIndex: number): SubChunk | null {
     pos += 4
   }
   if (paletteCount <= 0 || paletteCount > 4096) throw new Error(`パレット数が不正です (${paletteCount})`)
-  for (let i = 0; i < 4096; i++) {
-    if (indices[i] >= paletteCount) throw new Error('パレット範囲外のブロックがあります')
-  }
 
+  // The palette follows the index words; read it first so all-air subchunks skip unpacking
   const reader = new NbtReader(value, pos)
   const palette: string[] = []
   for (let i = 0; i < paletteCount; i++) {
     const tag = reader.readRoot()
     palette.push(typeof tag.name === 'string' ? tag.name : 'minecraft:unknown')
   }
-  // All-air subchunks (most of the sky) never contribute to the map
-  if (palette.every(n => AIR_BLOCKS.has(n))) return null
+  // Indices must stay within the palette even when the subchunk is skipped as all-air;
+  // they can only exceed it when the palette is smaller than 2^bits
+  const mayExceed = bits > 0 && paletteCount < 2 ** bits
+  const allAir = palette.every(n => AIR_BLOCKS.has(n))
+  if (allAir) {
+    if (mayExceed && unpackIndices(dv, wordsPos, bits, null) >= paletteCount) {
+      throw new Error('パレット範囲外のブロックがあります')
+    }
+    return null
+  }
+
+  const indices = new Uint16Array(4096)
+  if (bits > 0 && unpackIndices(dv, wordsPos, bits, indices) >= paletteCount) {
+    throw new Error('パレット範囲外のブロックがあります')
+  }
   return { yBase: yIndex * 16, palette, indices }
+}
+
+/** Unpack 4096 bit-packed palette indices (into `out` when given) and return the largest one. */
+function unpackIndices(dv: DataView, wordsPos: number, bits: number, out: Uint16Array | null): number {
+  const blocksPerWord = Math.floor(32 / bits)
+  const wordCount = Math.ceil(4096 / blocksPerWord)
+  const mask = (1 << bits) - 1
+  let maxIndex = 0
+  let bi = 0
+  for (let w = 0; w < wordCount; w++) {
+    let word = dv.getUint32(wordsPos + w * 4, true)
+    for (let j = 0; j < blocksPerWord && bi < 4096; j++) {
+      const index = word & mask
+      if (index > maxIndex) maxIndex = index
+      if (out) out[bi] = index
+      bi++
+      word >>>= bits
+    }
+  }
+  return maxIndex
 }
 
 const KIND_SOLID = 0
@@ -285,82 +483,104 @@ const KIND_WATER = 2
 /** Nether roof: columns start below this height and skip the bedrock ceiling */
 const NETHER_SCAN_TOP = 127
 
-function computeColumns(subs: SubChunk[], dim: Dimension, resolveColor: (name: string) => ResolvedColor): ChunkColumns {
-  subs.sort((a, b) => b.yBase - a.yBase) // top to bottom
-  const prepared = subs.map(sub => {
-    const resolved = sub.palette.map(n => (AIR_BLOCKS.has(n) ? 'not_shown' : resolveColor(n)))
-    return {
-      ...sub,
-      kind: Uint8Array.from(sub.palette, (n, i) =>
-        resolved[i] === 'not_shown' ? KIND_AIR : isWater(n) ? KIND_WATER : KIND_SOLID),
-      colors: resolved.map(c => (c === 'not_shown' ? WATER_COLOR : c)), // placeholder for skipped entries
-    }
-  })
+type RawSubChunk = { keyY: number; value: Uint8Array }
 
-  const heights = new Int16Array(256).fill(NO_HEIGHT)
-  const rgb = new Uint8ClampedArray(256 * 3)
-  const names: string[] = new Array(256).fill('')
+function effectiveY(sub: RawSubChunk): number {
+  return sub.value[0] === 9 && sub.value.length >= 3 ? (sub.value[2] << 24) >> 24 : sub.keyY
+}
+
+function computeColumns(
+  raw: RawSubChunk[],
+  parse: (sub: RawSubChunk) => SubChunk | null,
+  dim: Dimension,
+  resolveColor: (name: string) => ResolvedColor,
+): ChunkColumns | null {
   const isNether = dim === 1
+  // Per-column scan state, carried from one subchunk to the next
+  const done = new Uint8Array(256)
+  const topColor: (RGB | null)[] = new Array(256).fill(null)
+  const topName: string[] = new Array(256).fill('')
+  const topY = new Int32Array(256)
+  const waterDepth = new Int32Array(256)
+  const reachedOpenSpace = new Uint8Array(256).fill(isNether ? 0 : 1)
+  const prevBottom = new Int32Array(256).fill(NETHER_SCAN_TOP + 1)
+  let remaining = 256
+  let anySub = false
 
-  for (let lx = 0; lx < 16; lx++) {
-    for (let lz = 0; lz < 16; lz++) {
-      let topColor: RGB | null = null
-      let topName = ''
-      let topY = 0
-      let waterDepth = 0
-      let reachedOpenSpace = !isNether
-      let prevBottom = NETHER_SCAN_TOP + 1
-      const base = lx * 256 + lz * 16
+  for (const entry of raw) {
+    if (remaining === 0) break
+    const sub = parse(entry)
+    if (!sub) continue
+    anySub = true
+    const resolved = sub.palette.map(n => (AIR_BLOCKS.has(n) ? 'not_shown' : resolveColor(n)))
+    const kind = Uint8Array.from(sub.palette, (n, i) =>
+      resolved[i] === 'not_shown' ? KIND_AIR : isWater(n) ? KIND_WATER : KIND_SOLID)
 
-      scan: for (const sub of prepared) {
+    for (let lx = 0; lx < 16; lx++) {
+      for (let lz = 0; lz < 16; lz++) {
+        const ci = lz * 16 + lx
+        if (done[ci]) continue
         if (isNether && sub.yBase <= NETHER_SCAN_TOP) {
           // All-air subchunks are dropped while parsing, so a gap in Y means open space
-          if (sub.yBase + 16 < prevBottom) reachedOpenSpace = true
-          prevBottom = sub.yBase
+          if (sub.yBase + 16 < prevBottom[ci]) reachedOpenSpace[ci] = 1
+          prevBottom[ci] = sub.yBase
         }
+        const base = lx * 256 + lz * 16
         for (let ly = 15; ly >= 0; ly--) {
           const y = sub.yBase + ly
           if (isNether && y > NETHER_SCAN_TOP) continue
           const pi = sub.indices[base + ly]
-          const k = sub.kind[pi]
-          if (!reachedOpenSpace) {
-            if (k === KIND_AIR) reachedOpenSpace = true
+          const k = kind[pi]
+          if (!reachedOpenSpace[ci]) {
+            if (k === KIND_AIR) reachedOpenSpace[ci] = 1
             continue
           }
           if (k === KIND_AIR) continue
-          if (k === KIND_WATER) { waterDepth++; continue } // keep looking for the floor
-          topColor = sub.colors[pi]
-          topName = sub.palette[pi]
-          topY = y
-          break scan
+          if (k === KIND_WATER) { waterDepth[ci]++; continue } // keep looking for the floor
+          topColor[ci] = resolved[pi] as RGB
+          topName[ci] = sub.palette[pi]
+          topY[ci] = y
+          done[ci] = 1
+          remaining--
+          break
         }
       }
-      if (!topColor && waterDepth) {
-        topColor = WATER_COLOR
-        topName = 'minecraft:water'
-      }
-      if (!topColor) continue
-
-      let [r, g, b] = topColor
-      if (waterDepth) {
-        // Water: overlay blue on the floor color according to depth
-        const t = Math.min(waterDepth, 16) / 16
-        const wr = 45 + (1 - t) * 30
-        const wg = 90 + (1 - t) * 40
-        const wb = 190 + (1 - t) * 30
-        r = r * (1 - t * 0.85) + wr * t * 0.85 * 0.3 + wr * 0.55
-        g = g * (1 - t * 0.85) + wg * 0.55
-        b = b * (1 - t * 0.85) + wb * 0.6
-        if (topName !== 'minecraft:water') topName = `minecraft:water (${waterDepth}) / ${topName}`
-      }
-
-      const ci = lz * 16 + lx
-      heights[ci] = topY
-      rgb[ci * 3] = r
-      rgb[ci * 3 + 1] = g
-      rgb[ci * 3 + 2] = b
-      names[ci] = topName
     }
+  }
+  if (!anySub) return null
+
+  const heights = new Int16Array(256).fill(NO_HEIGHT)
+  const rgb = new Uint8ClampedArray(256 * 3)
+  const names: string[] = new Array(256).fill('')
+
+  for (let ci = 0; ci < 256; ci++) {
+    let color = topColor[ci]
+    let name = topName[ci]
+    const depth = waterDepth[ci]
+    if (!color && depth) {
+      color = WATER_COLOR
+      name = 'minecraft:water'
+    }
+    if (!color) continue
+
+    let [r, g, b] = color
+    if (depth) {
+      // Water: overlay blue on the floor color according to depth
+      const t = Math.min(depth, 16) / 16
+      const wr = 45 + (1 - t) * 30
+      const wg = 90 + (1 - t) * 40
+      const wb = 190 + (1 - t) * 30
+      r = r * (1 - t * 0.85) + wr * t * 0.85 * 0.3 + wr * 0.55
+      g = g * (1 - t * 0.85) + wg * 0.55
+      b = b * (1 - t * 0.85) + wb * 0.6
+      if (name !== 'minecraft:water') name = `minecraft:water (${depth}) / ${name}`
+    }
+
+    heights[ci] = topY[ci]
+    rgb[ci * 3] = r
+    rgb[ci * 3 + 1] = g
+    rgb[ci * 3 + 2] = b
+    names[ci] = name
   }
   return { heights, rgb, names }
 }
