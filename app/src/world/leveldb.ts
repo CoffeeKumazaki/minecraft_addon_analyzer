@@ -1,4 +1,5 @@
 import { inflate, type ZipReader } from './zip-reader'
+import { yieldToEventLoop } from './yield'
 
 /**
  * Read-only LevelDB reader for Bedrock world `db/` directories inside a ZIP.
@@ -36,6 +37,11 @@ const MAX_DECODED_BLOCK_SIZE = 4 * MAX_BLOCK_SIZE
 const ENTRY_OVERHEAD = 96
 const TABLE_CACHE_BYTES = 192 * 1024 * 1024
 const BLOCK_CACHE_BYTES = 64 * 1024 * 1024
+/** Budgets for getPrefixLimited: bytes of copied keys/values, and records examined */
+const LIMITED_SCAN_BYTES = 16 * 1024 * 1024
+const LIMITED_SCAN_MIN_RECORDS = 10_000
+/** Most sources (memtable + tables) a bounded prefix merge keeps open at once */
+const MAX_MERGE_SOURCES = 64
 /** Concurrent prefix lookups; bounds how many tables/blocks are held by in-flight scans */
 const MAX_CONCURRENT_LOOKUPS = 8
 
@@ -137,6 +143,26 @@ export class LevelDB {
     }
   }
 
+  /**
+   * Like getPrefix, but bounded: returns at most `limit` live entries (values are
+   * copied, so no blocks stay referenced) within byte and record budgets, yielding
+   * to the event loop while scanning. Sources are merged in key order, so every
+   * returned entry reflects its newest version and deletions; `truncated` means
+   * more data remained under the prefix.
+   */
+  async getPrefixLimited(
+    prefix: Uint8Array,
+    limit: number,
+    maxBytes = LIMITED_SCAN_BYTES,
+  ): Promise<{ entries: KV[]; truncated: boolean }> {
+    await this.lookups.acquire()
+    try {
+      return await this.mergePrefix(prefix, limit, maxBytes)
+    } finally {
+      this.lookups.release()
+    }
+  }
+
   private async scanPrefix(prefix: Uint8Array): Promise<KV[]> {
     const merged = new Map<string, InternalEntry>()
     const add = (entry: InternalEntry) => {
@@ -151,11 +177,7 @@ export class LevelDB {
       add(entry)
     }
 
-    const candidates = this.tables.filter(t =>
-      compareBytes(t.largest, prefix) >= 0 &&
-      compareBytes(t.smallest.subarray(0, prefix.length), prefix) <= 0,
-    )
-    for (const meta of candidates) {
+    for (const meta of this.candidateTables(prefix)) {
       const table = await this.openTable(meta.path)
       for (let b = table.seekBlock(prefix); b < table.index.length; b++) {
         const entries = await this.readBlock(meta.path, table, b)
@@ -173,6 +195,101 @@ export class LevelDB {
       .filter((e): e is InternalEntry & { value: Uint8Array } => e.value !== null)
       .sort((a, b) => compareBytes(a.key, b.key))
       .map(e => ({ key: e.key, value: e.value }))
+  }
+
+  private async mergePrefix(prefix: Uint8Array, limit: number, maxBytes: number): Promise<{ entries: KV[]; truncated: boolean }> {
+    const incomplete = { entries: [] as KV[], truncated: true }
+    const tables = this.candidateTables(prefix)
+    // Every source must stay open during the merge; too many cannot be settled within budget
+    if (tables.length + 1 > MAX_MERGE_SOURCES) return incomplete
+
+    // One sorted stream per source (memtable + candidate tables), opened one at a time.
+    // Within a table, versions of a key come newest first, so the k-way merge settles each key once.
+    const sources: AsyncIterator<InternalEntry>[] = [
+      this.memtableEntries(prefix),
+      ...tables.map(meta => this.tableEntries(meta.path, prefix)),
+    ]
+    const heads: (InternalEntry | null)[] = []
+    for (const source of sources) {
+      heads.push((await source.next()).value ?? null)
+      await yieldToEventLoop()
+    }
+
+    const maxRecords = Math.max(LIMITED_SCAN_MIN_RECORDS, limit * 8)
+    const entries: KV[] = []
+    let bytes = 0
+    let records = 0
+
+    for (;;) {
+      let key: Uint8Array | null = null
+      for (const head of heads) {
+        if (head && (!key || compareBytes(head.key, key) < 0)) key = head.key
+      }
+      if (!key) return { entries, truncated: false }
+      if (entries.length >= limit) return { entries, truncated: true }
+
+      // Settle this key across all sources; a key that cannot be settled within budget is not adopted
+      let newest: InternalEntry | null = null
+      for (let i = 0; i < heads.length; i++) {
+        let head = heads[i]
+        while (head && compareBytes(head.key, key) === 0) {
+          if (++records > maxRecords) return { entries, truncated: true }
+          if (!newest || head.seq > newest.seq) newest = head
+          head = (await sources[i].next()).value ?? null
+          await yieldToEventLoop()
+        }
+        heads[i] = head
+      }
+      if (newest?.value) {
+        const size = newest.key.length + newest.value.length
+        if (bytes + size > maxBytes) return { entries, truncated: true }
+        bytes += size
+        entries.push({ key: newest.key.slice(), value: newest.value.slice() })
+      }
+    }
+  }
+
+  private candidateTables(prefix: Uint8Array): TableMeta[] {
+    return this.tables.filter(t =>
+      compareBytes(t.largest, prefix) >= 0 &&
+      compareBytes(t.smallest.subarray(0, prefix.length), prefix) <= 0,
+    )
+  }
+
+  private async *memtableEntries(prefix: Uint8Array): AsyncGenerator<InternalEntry> {
+    for (let i = lowerBound(this.memtable, prefix); i < this.memtable.length; i++) {
+      const entry = this.memtable[i]
+      if (!startsWith(entry.key, prefix)) return
+      yield entry
+    }
+  }
+
+  /**
+   * Entries of one table under `prefix`. While suspended, the generator holds only
+   * the current block's entries; tables are looked up in helpers (through the
+   * byte-budgeted cache) so no Table stays referenced across yields.
+   */
+  private async *tableEntries(path: string, prefix: Uint8Array): AsyncGenerator<InternalEntry> {
+    let b = await this.seekBlockIndex(path, prefix)
+    for (;;) {
+      const block = await this.blockAt(path, b++)
+      if (!block) return
+      for (const entry of block) {
+        if (compareBytes(entry.key, prefix) < 0) continue
+        if (!startsWith(entry.key, prefix)) return
+        yield entry
+      }
+    }
+  }
+
+  private async seekBlockIndex(path: string, prefix: Uint8Array): Promise<number> {
+    return (await this.openTable(path)).seekBlock(prefix)
+  }
+
+  /** Decoded entries of block `index`, or null past the last block. */
+  private async blockAt(path: string, index: number): Promise<InternalEntry[] | null> {
+    const table = await this.openTable(path)
+    return index < table.index.length ? this.readBlock(path, table, index) : null
   }
 
   private openTable(path: string): Promise<Table> {

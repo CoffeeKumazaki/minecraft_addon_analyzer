@@ -35,6 +35,11 @@ export function ResultsPage() {
     return colors
   }, [state.result])
 
+  const addonEntityIds = useMemo(
+    () => new Set((state.result?.entities ?? []).map(e => e.id)),
+    [state.result],
+  )
+
   if (!state.result) return null
 
   return (
@@ -46,6 +51,7 @@ export function ResultsPage() {
           key={`${worldFile.name}:${worldFile.size}:${worldFile.lastModified}`}
           file={worldFile}
           customColors={customMapColors}
+          addonEntityIds={addonEntityIds}
         />
       )}
       {missingTypes.length > 0 && (

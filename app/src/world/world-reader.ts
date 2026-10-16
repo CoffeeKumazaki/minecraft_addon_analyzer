@@ -1,6 +1,7 @@
 import { ZipReader } from './zip-reader'
 import { LevelDB } from './leveldb'
 import { NbtReader, type NbtCompound } from './nbt'
+import { yieldToEventLoop } from './yield'
 import { AIR_BLOCKS, blockColor, createColorResolver, isWater, type CustomMapColor, type ResolvedColor, type RGB } from './block-colors'
 
 /**
@@ -10,6 +11,27 @@ import { AIR_BLOCKS, blockColor, createColorResolver, isWater, type CustomMapCol
  */
 
 export type Dimension = 0 | 1 | 2
+
+/** An entity or player saved in the world, for map markers */
+export type EntityMarker = {
+  /** e.g. minecraft:cow, my_addon:robot, minecraft:player */
+  identifier: string;
+  x: number;
+  y: number;
+  z: number;
+  dim: Dimension;
+  /** Custom name tag, or the player name when known */
+  name: string | null;
+  isPlayer: boolean;
+}
+
+export type EntityScan = {
+  entities: EntityMarker[];
+  /** Records that could not be decoded (not shown) */
+  skipped: number;
+  /** True when more entities existed than MAX_ENTITIES */
+  truncated: boolean;
+}
 
 export type WorldInfo = {
   name: string | null;
@@ -71,6 +93,7 @@ type ChunkColumns = {
 export class WorldReader {
   private readonly chunkCache = new Map<string, Promise<ChunkColumns | null>>()
   private readonly lodCache = new Map<string, LodTile | null>()
+  private entityScan: Promise<EntityScan> | null = null
 
   private readonly db: LevelDB
   private readonly resolveColor: (name: string) => ResolvedColor
@@ -313,6 +336,88 @@ export class WorldReader {
     return chunk
   }
 
+  /**
+   * Saved entities and players (modern format, 1.18.30+ only; legacy per-chunk
+   * entities and block entities are not read). Entity records live under
+   * `actorprefix` keys and carry their position; the dimension comes from the
+   * `digp` list of the chunk at that position. Read once and cached.
+   */
+  readEntities(): Promise<EntityScan> {
+    this.entityScan ??= this.scanEntities()
+    return this.entityScan
+  }
+
+  private async scanEntities(): Promise<EntityScan> {
+    const enc = new TextEncoder()
+    const entities: EntityMarker[] = []
+    let skipped = 0
+    let truncated = false
+    const push = (marker: EntityMarker) => {
+      if (entities.length >= MAX_ENTITIES) truncated = true
+      else entities.push(marker)
+    }
+
+    // Players first, so they are kept even when the entity limit is reached
+    for (const prefix of ['~local_player', 'player_server_']) {
+      const players = await this.db.getPrefixLimited(enc.encode(prefix), MAX_ENTITIES)
+      truncated ||= players.truncated
+      for (const { value } of players.entries) {
+        await yieldToEventLoop()
+        const marker = parseEntity(value, true)
+        if (marker) push(marker)
+        else skipped++
+      }
+    }
+
+    const actors = await this.db.getPrefixLimited(enc.encode(ACTOR_PREFIX), MAX_ENTITIES)
+    truncated ||= actors.truncated
+    for (const { key, value } of actors.entries) {
+      if (entities.length >= MAX_ENTITIES) { truncated = true; break }
+      await yieldToEventLoop()
+      // Key = prefix + 8-byte actor id
+      if (key.length !== ACTOR_PREFIX.length + 8) { skipped++; continue }
+      const marker = parseEntity(value, false)
+      if (!marker) { skipped++; continue }
+      const dim = await this.findActorDimension(key.subarray(ACTOR_PREFIX.length), marker)
+      if (dim === 'corrupt') { skipped++; continue }
+      if (dim !== null) marker.dim = dim
+      push(marker)
+    }
+
+    return { entities, skipped, truncated }
+  }
+
+  /**
+   * Dimension of an actor from the `digp` list of the chunk at its position
+   * (keys: 'digp' + x + z [+ dimension]). null when it is listed in none of them,
+   * leaving the dimension parsed from the record itself.
+   */
+  private async findActorDimension(actorId: Uint8Array, marker: EntityMarker): Promise<Dimension | null | 'corrupt'> {
+    const prefix = new Uint8Array(12)
+    const dv = new DataView(prefix.buffer)
+    prefix.set(DIGP_PREFIX)
+    dv.setInt32(4, Math.floor(marker.x / 16), true)
+    dv.setInt32(8, Math.floor(marker.z / 16), true)
+    // A chunk has at most one list per dimension; anything else under this prefix is damage
+    const lists = await this.db.getPrefixLimited(prefix, 3)
+    if (lists.truncated) return 'corrupt'
+    // Validate every list before trusting any of them
+    const parsed: { dim: Dimension; value: Uint8Array }[] = []
+    for (const { key, value } of lists.entries) {
+      if (key.length !== 12 && key.length !== 16) return 'corrupt'
+      if (value.length % 8 !== 0) return 'corrupt'
+      const dim = key.length === 16 ? new DataView(key.buffer, key.byteOffset + 12, 4).getInt32(0, true) : 0
+      if (dim !== 0 && dim !== 1 && dim !== 2) return 'corrupt'
+      parsed.push({ dim, value })
+    }
+    for (const { dim, value } of parsed) {
+      for (let i = 0; i < value.length; i += 8) {
+        if (bytesEqual(value.subarray(i, i + 8), actorId)) return dim
+      }
+    }
+    return null
+  }
+
   private async readChunk(dim: Dimension, cx: number, cz: number): Promise<ChunkColumns | null> {
     const prefix = chunkPrefix(dim, cx, cz)
     const entries = await this.db.getPrefix(prefix)
@@ -337,21 +442,6 @@ export class WorldReader {
     }
     return computeColumns(raw, parse, dim, this.resolveColor)
   }
-}
-
-/** Longest stretch of LOD work between yields, so cancel messages can reach the worker */
-const YIELD_INTERVAL_MS = 8
-let lastYield = 0
-
-/**
- * Give the worker's event loop a chance to run (e.g. to receive a cancel message).
- * Cached data resolves in microtasks, so awaiting it alone never yields.
- */
-async function yieldToEventLoop(): Promise<void> {
-  const now = performance.now()
-  if (now - lastYield < YIELD_INTERVAL_MS) return
-  await new Promise<void>(resolve => setTimeout(resolve, 0))
-  lastYield = performance.now()
 }
 
 /** Combine four child tiles (NW, NE, SW, SE) into one tile at half resolution, averaging non-empty pixels. */
@@ -587,6 +677,53 @@ function computeColumns(
 
 // ---------------------------------------------------------------------------
 // Keys and metadata
+
+const ACTOR_PREFIX = 'actorprefix'
+const DIGP_PREFIX = new TextEncoder().encode('digp')
+/** Upper bound on entity markers (and records read) per world */
+const MAX_ENTITIES = 20_000
+/** Longest identifier / name kept for a marker */
+const MAX_LABEL_LENGTH = 256
+
+/**
+ * Marker from an entity or player NBT record, or null when the record is unreadable
+ * (bad NBT, missing identifier, invalid position or dimension).
+ */
+function parseEntity(value: Uint8Array, isPlayer: boolean): EntityMarker | null {
+  let nbt: NbtCompound
+  try {
+    nbt = new NbtReader(value).readRoot()
+  } catch {
+    return null
+  }
+  const pos = readPos(nbt.Pos)
+  const identifier = isPlayer ? 'minecraft:player' : nbt.identifier
+  // Players record DimensionId; other entities may carry LastDimensionId (fallback when not in digp)
+  const dim = readDimension(isPlayer ? nbt.DimensionId : nbt.LastDimensionId)
+  if (!pos || typeof identifier !== 'string' || !identifier || dim === null) return null
+  const name = typeof nbt.CustomName === 'string' && nbt.CustomName ? nbt.CustomName.slice(0, MAX_LABEL_LENGTH) : null
+  return { identifier: identifier.slice(0, MAX_LABEL_LENGTH), ...pos, dim, name, isPlayer }
+}
+
+/** Missing → overworld; present but not 0/1/2 → invalid (null) */
+function readDimension(value: unknown): Dimension | null {
+  if (value === undefined) return 0
+  return value === 0 || value === 1 || value === 2 ? value : null
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false
+  return true
+}
+
+/** Pos is a list of three floats; reject non-finite values and positions outside the world border */
+function readPos(value: unknown): { x: number; y: number; z: number } | null {
+  if (!Array.isArray(value) || value.length < 3) return null
+  const [x, y, z] = value
+  const ok = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= MAX_COORDINATE
+  return ok(x) && ok(y) && ok(z) ? { x, y, z } : null
+}
 
 function chunkPrefix(dim: Dimension, cx: number, cz: number): Uint8Array {
   const prefix = new Uint8Array(dim === 0 ? 8 : 12)

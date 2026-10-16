@@ -72,6 +72,13 @@ const translations: Record<string, Record<Language, string>> = {
   'map.tileError': { en: 'Failed to read some areas', ja: '読み込めなかった範囲があります' },
   'map.retry': { en: 'Retry', ja: '再試行' },
   'map.jump': { en: 'Go', ja: '移動' },
+  'map.entities': { en: 'Entities', ja: 'エンティティ' },
+  'map.addonOnly': { en: 'Add-on only', ja: 'アドオンのみ' },
+  'map.openEntityPage': { en: 'Open entity page', ja: 'エンティティページへ' },
+  'map.close': { en: 'Close', ja: '閉じる' },
+  'map.entitiesScope': { en: 'Shows entities and players saved in the 1.18.30+ format. Older-format entities and block entities (chests, signs, ...) are not shown.', ja: '1.18.30 以降の形式で保存されたエンティティとプレイヤーを表示します。旧形式のエンティティとブロックエンティティ（チェスト・看板など）は表示しません。' },
+  'map.entitiesSkipped': { en: 'Unreadable entities', ja: '読めなかったエンティティ' },
+  'map.entitiesTruncated': { en: 'Too many entities; some are not shown', ja: 'エンティティが多すぎるため一部を表示していません' },
 }
 
 function formatCount(count: number, type: 'items' | 'mobs', lang: Language): string {

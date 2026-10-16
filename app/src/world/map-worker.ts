@@ -1,4 +1,4 @@
-import { RenderCancelled, WorldReader, type Dimension, type TileResult, type WorldInfo } from './world-reader'
+import { RenderCancelled, WorldReader, type Dimension, type EntityScan, type TileResult, type WorldInfo } from './world-reader'
 import type { CustomMapColor } from './block-colors'
 
 /**
@@ -12,6 +12,7 @@ export type MapWorkerRequest =
   | { type: 'open'; file: File; customColors: Record<string, CustomMapColor> }
   | { type: 'tile'; id: number; dim: Dimension; level: number; tx: number; tz: number }
   | { type: 'cancel'; ids: number[] }
+  | { type: 'entities' }
 
 export type MapWorkerResponse =
   | { type: 'opened'; info: WorldInfo }
@@ -19,6 +20,8 @@ export type MapWorkerResponse =
   | { type: 'tile'; id: number; tile: TileResult | null }
   /** Downsampled tile (level > 0), pixels only */
   | { type: 'lod'; id: number; pixels: Uint8ClampedArray | null }
+  | { type: 'entities'; scan: EntityScan }
+  | { type: 'entitiesError'; message: string }
   | { type: 'error'; id?: number; message: string }
 
 type TileRequest = Extract<MapWorkerRequest, { type: 'tile' }>
@@ -79,6 +82,12 @@ self.onmessage = (event: MessageEvent<MapWorkerRequest>) => {
     case 'tile':
       queue.push(msg)
       pump()
+      break
+    case 'entities':
+      world
+        ?.then(w => w.readEntities())
+        .then(scan => post({ type: 'entities', scan }))
+        .catch(e => post({ type: 'entitiesError', message: e instanceof Error ? e.message : String(e) }))
       break
     case 'cancel': {
       const ids = new Set(msg.ids)

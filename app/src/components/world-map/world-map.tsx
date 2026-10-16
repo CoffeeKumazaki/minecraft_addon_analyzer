@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Loader2, LocateFixed, Minus, Plus, RotateCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Info, Loader2, LocateFixed, Minus, Plus, RotateCw, X as CloseIcon } from 'lucide-react'
 import { useLanguage } from '@/context/language-context'
-import { TILE_BLOCKS, NO_HEIGHT, MAX_COORDINATE, MAX_LOD, type Dimension, type TileResult, type WorldInfo } from '@/world/world-reader'
+import { cn } from '@/lib/utils'
+import { TILE_BLOCKS, NO_HEIGHT, MAX_COORDINATE, MAX_LOD, type Dimension, type EntityMarker, type TileResult, type WorldInfo } from '@/world/world-reader'
 import type { MapWorkerRequest, MapWorkerResponse } from '@/world/map-worker'
 import type { CustomMapColor } from '@/world/block-colors'
 
@@ -9,6 +11,8 @@ type Props = {
   file: File;
   /** Add-on block id → minecraft:map_color (null when the block has none); keep referentially stable */
   customColors: Record<string, CustomMapColor>;
+  /** Entity ids defined by the analyzed add-ons; their markers link to the detail page */
+  addonEntityIds: ReadonlySet<string>;
 }
 
 type TileEntry =
@@ -19,7 +23,20 @@ type TileEntry =
 
 type View = { x: number; z: number; scale: number } // center in blocks, CSS px per block
 
-type Hover = { x: number; z: number; y: number | null; block: string }
+type Hover = { x: number; z: number; y: number | null; block: string; entity: EntityMarker | null }
+
+type EntityStatus =
+  | { state: 'loading' }
+  | { state: 'ready'; count: number; skipped: number; truncated: boolean }
+  | { state: 'error'; message: string }
+
+/** Pointer travel (CSS px) up to which a press still counts as a click */
+const CLICK_SLOP = 4
+/** Screen distance (CSS px) within which the cursor picks an entity marker */
+const ENTITY_PICK_RADIUS = 8
+
+const isAddonEntity = (e: EntityMarker) => !e.isPlayer && !e.identifier.startsWith('minecraft:')
+const ENTITY_COLORS = { player: '#3b82f6', addon: '#f59e0b', vanilla: '#e5e7eb' }
 
 /** Zoomed out as far as the coarsest level, where one tile pixel is 2^MAX_LOD blocks */
 const MIN_SCALE = 1 / 2 ** MAX_LOD
@@ -35,7 +52,7 @@ const DIMENSIONS: { dim: Dimension; labelKey: string }[] = [
   { dim: 2, labelKey: 'map.end' },
 ]
 
-export function WorldMap({ file, customColors }: Props) {
+export function WorldMap({ file, customColors, addonEntityIds }: Props) {
   const { t } = useLanguage()
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -47,6 +64,10 @@ export function WorldMap({ file, customColors }: Props) {
   const dimRef = useRef<Dimension>(0)
   const infoRef = useRef<WorldInfo | null>(null)
   const targetRef = useRef<{ x: number; z: number; dim: Dimension } | null>(null) // last jumped-to block
+  const entitiesRef = useRef<EntityMarker[]>([])
+  const entityFilterRef = useRef({ show: true, addonOnly: false })
+  const selectedRef = useRef<EntityMarker | null>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
   const drawQueuedRef = useRef(false)
 
   const [info, setInfo] = useState<WorldInfo | null>(null)
@@ -55,6 +76,10 @@ export function WorldMap({ file, customColors }: Props) {
   const [hover, setHover] = useState<Hover | null>(null)
   const [pendingCount, setPendingCount] = useState(0)
   const [tileError, setTileError] = useState<{ count: number; message: string } | null>(null)
+  const [entityStatus, setEntityStatus] = useState<EntityStatus>({ state: 'loading' })
+  const [showEntities, setShowEntities] = useState(true)
+  const [addonOnly, setAddonOnly] = useState(false)
+  const [selected, setSelected] = useState<EntityMarker | null>(null)
   const [jumpX, setJumpX] = useState('')
   const [jumpZ, setJumpZ] = useState('')
 
@@ -173,6 +198,51 @@ export function WorldMap({ file, customColors }: Props) {
       }
     }
 
+    // Entity markers
+    const filter = entityFilterRef.current
+    if (filter.show) {
+      for (const e of entitiesRef.current) {
+        if (e.dim !== d || (filter.addonOnly && !isAddonEntity(e))) continue
+        const sx = (e.x - left) * scale
+        const sy = (e.z - top) * scale
+        if (sx < -10 || sy < -10 || sx > width + 10 || sy > height + 10) continue
+        ctx.fillStyle = e.isPlayer ? ENTITY_COLORS.player : isAddonEntity(e) ? ENTITY_COLORS.addon : ENTITY_COLORS.vanilla
+        ctx.strokeStyle = '#111114'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.arc(sx, sy, e.isPlayer ? 5 : 4, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+      }
+    }
+
+    // Selected entity: highlight ring, and keep its popup anchored to the marker
+    const sel = selectedRef.current
+    const popup = popupRef.current
+    const selVisible = !!sel && filter.show && sel.dim === d && !(filter.addonOnly && !isAddonEntity(sel))
+    if (sel && selVisible) {
+      const sx = (sel.x - left) * scale
+      const sy = (sel.z - top) * scale
+      ctx.strokeStyle = '#ffffff'
+      ctx.lineWidth = 2.5
+      ctx.beginPath()
+      ctx.arc(sx, sy, 9, 0, Math.PI * 2)
+      ctx.stroke()
+      if (popup) {
+        // Above the marker when it fits, otherwise below; kept inside the map horizontally
+        const gap = 12
+        const w = popup.offsetWidth
+        const h = popup.offsetHeight
+        const px = Math.max(4, Math.min(width - w - 4, sx - w / 2))
+        const py = sy - gap - h >= 4 ? sy - gap - h : Math.min(height - h - 4, sy + gap)
+        popup.style.left = `${px}px`
+        popup.style.top = `${py}px`
+        popup.style.visibility = 'visible'
+      }
+    } else if (popup) {
+      popup.style.visibility = 'hidden'
+    }
+
     // Jump target marker (crosshair on the block)
     const target = targetRef.current
     if (target && target.dim === d) {
@@ -261,6 +331,18 @@ export function WorldMap({ file, customColors }: Props) {
         setInfo(msg.info)
         const center = msg.info.spawn ?? msg.info.fallbackCenter ?? { x: 0, z: 0 }
         viewRef.current = { ...viewRef.current, x: center.x, z: center.z }
+        worker.postMessage({ type: 'entities' } satisfies MapWorkerRequest)
+        return
+      }
+      if (msg.type === 'entities') {
+        if (disposed) return
+        entitiesRef.current = msg.scan.entities
+        setEntityStatus({ state: 'ready', count: msg.scan.entities.length, skipped: msg.scan.skipped, truncated: msg.scan.truncated })
+        requestDraw()
+        return
+      }
+      if (msg.type === 'entitiesError') {
+        if (!disposed) setEntityStatus({ state: 'error', message: msg.message })
         return
       }
       if (msg.type === 'error' && msg.id === undefined) {
@@ -315,6 +397,16 @@ export function WorldMap({ file, customColors }: Props) {
     }
   }, [file, customColors, requestDraw])
 
+  useEffect(() => {
+    entityFilterRef.current = { show: showEntities, addonOnly }
+    requestDraw()
+  }, [showEntities, addonOnly, requestDraw])
+
+  useEffect(() => {
+    selectedRef.current = selected
+    requestDraw()
+  }, [selected, requestDraw])
+
   // Redraw when world info arrives, dimension changes, or the container resizes
   useEffect(() => {
     dimRef.current = dim
@@ -354,6 +446,8 @@ export function WorldMap({ file, customColors }: Props) {
       const wz = view.z + oy / view.scale
       viewRef.current = { x: wx - ox / scale, z: wz - oy / scale, scale }
     }
+    // What is under the cursor changes with the view; it is picked again on the next move
+    setHover(null)
     requestDraw()
   }, [requestDraw])
 
@@ -369,10 +463,37 @@ export function WorldMap({ file, customColors }: Props) {
   }, [zoomAt])
 
   const dragRef = useRef<{ x: number; y: number } | null>(null)
+  /** Press position, cleared once the pointer moves far enough to count as a drag */
+  const pressRef = useRef<{ x: number; y: number } | null>(null)
 
   const onPointerDown = (e: React.PointerEvent) => {
     dragRef.current = { x: e.clientX, y: e.clientY }
+    pressRef.current = { x: e.clientX, y: e.clientY }
     e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const onPointerCancel = () => {
+    dragRef.current = null
+    pressRef.current = null
+  }
+
+  /** Nearest visible entity marker within the pick radius of a screen point */
+  const pickEntity = (clientX: number, clientY: number): EntityMarker | null => {
+    const filter = entityFilterRef.current
+    if (!filter.show) return null
+    const w = toWorld(clientX, clientY)
+    const radius = ENTITY_PICK_RADIUS / viewRef.current.scale
+    let best: EntityMarker | null = null
+    let bestDist = radius * radius
+    for (const e of entitiesRef.current) {
+      if (e.dim !== dimRef.current || (filter.addonOnly && !isAddonEntity(e))) continue
+      const dist = (e.x - w.x) ** 2 + (e.z - w.z) ** 2
+      if (dist <= bestDist) {
+        best = e
+        bestDist = dist
+      }
+    }
+    return best
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -385,6 +506,8 @@ export function WorldMap({ file, customColors }: Props) {
         z: viewRef.current.z - (e.clientY - drag.y) / scale,
       }
       dragRef.current = { x: e.clientX, y: e.clientY }
+      const press = pressRef.current
+      if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > CLICK_SLOP) pressRef.current = null
       requestDraw()
     }
 
@@ -405,12 +528,17 @@ export function WorldMap({ file, customColors }: Props) {
         block = entry.tile.blockNames[entry.tile.blockIds[i]].replace(/minecraft:/g, '')
       }
     }
-    setHover({ x: bx, z: bz, y, block })
+    setHover({ x: bx, z: bz, y, block, entity: drag ? null : pickEntity(e.clientX, e.clientY) })
   }
 
   const onPointerUp = (e: React.PointerEvent) => {
     dragRef.current = null
     e.currentTarget.releasePointerCapture(e.pointerId)
+    // A click (not a drag) selects the entity under the cursor, or clears the selection
+    const press = pressRef.current
+    pressRef.current = null
+    if (!press || Math.hypot(e.clientX - press.x, e.clientY - press.y) > CLICK_SLOP) return
+    setSelected(pickEntity(e.clientX, e.clientY))
   }
 
   const goTo = (target: { x: number; z: number } | null | undefined) => {
@@ -475,7 +603,7 @@ export function WorldMap({ file, customColors }: Props) {
           {DIMENSIONS.map(({ dim: d, labelKey }) => (
             <button
               key={d}
-              onClick={() => setDim(d)}
+              onClick={() => { setDim(d); setHover(null) }}
               className={`px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] transition-colors cursor-pointer ${
                 dim === d ? 'bg-accent text-primary' : 'bg-secondary hover:bg-border-light'
               }`}
@@ -489,10 +617,11 @@ export function WorldMap({ file, customColors }: Props) {
       <div ref={containerRef} className="relative h-[70vh] min-h-[360px] border-2 border-border overflow-hidden select-none">
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 h-full w-full cursor-grab active:cursor-grabbing touch-none"
+          className={`absolute inset-0 h-full w-full touch-none ${hover?.entity ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
           onPointerLeave={() => setHover(null)}
         />
 
@@ -522,7 +651,13 @@ export function WorldMap({ file, customColors }: Props) {
         </div>
 
         <div className="absolute bottom-2 left-2 flex items-center gap-3 bg-card/90 border border-border px-2 py-1 font-mono text-[11px]">
-          {hover ? (
+          {hover?.entity ? (
+            <span>
+              {hover.entity.identifier.replace(/^minecraft:/, '')}
+              {hover.entity.name && <> “{hover.entity.name}”</>}
+              {' '}· X {Math.floor(hover.entity.x)} / Y {Math.floor(hover.entity.y)} / Z {Math.floor(hover.entity.z)}
+            </span>
+          ) : hover ? (
             <span>
               X {hover.x} / Z {hover.z}
               {hover.y !== null && <> / Y {hover.y} · {hover.block}</>}
@@ -537,6 +672,74 @@ export function WorldMap({ file, customColors }: Props) {
             </span>
           )}
         </div>
+
+        <div className="absolute bottom-2 right-2 flex items-center gap-1 font-heading text-[10px] font-semibold tracking-[1px]">
+          <button
+            onClick={() => { setShowEntities(v => !v); setHover(null) }}
+            className={cn(buttonClass, 'gap-1.5', showEntities && 'bg-accent text-primary hover:bg-accent')}
+            title={entityStatus.state === 'error' ? entityStatus.message : undefined}
+          >
+            {entityStatus.state === 'loading' && <Loader2 className="h-3 w-3 animate-spin" />}
+            {t('map.entities').toUpperCase()}
+            {entityStatus.state === 'ready' && <span className="font-mono">{entityStatus.count}</span>}
+            {entityStatus.state === 'error' && <span className="text-destructive">!</span>}
+          </button>
+          {showEntities && (
+            <button
+              onClick={() => { setAddonOnly(v => !v); setHover(null) }}
+              className={cn(buttonClass, 'gap-1.5', addonOnly && 'bg-accent text-primary hover:bg-accent')}
+            >
+              <span className="inline-block h-2 w-2 rounded-full" style={{ background: ENTITY_COLORS.addon }} />
+              {t('map.addonOnly').toUpperCase()}
+            </button>
+          )}
+          {entityStatus.state === 'ready' && (entityStatus.skipped > 0 || entityStatus.truncated) && (
+            <span className="bg-card/90 border border-border px-2 py-1 text-destructive normal-case tracking-normal font-sans font-normal space-x-2">
+              {entityStatus.truncated && <span>{t('map.entitiesTruncated')}</span>}
+              {entityStatus.skipped > 0 && <span>{t('map.entitiesSkipped')}: {entityStatus.skipped}</span>}
+            </span>
+          )}
+          <span
+            className="h-8 w-6 flex items-center justify-center text-muted-foreground bg-card/90 border border-border"
+            title={t('map.entitiesScope')}
+            aria-label={t('map.entitiesScope')}
+          >
+            <Info className="h-3.5 w-3.5" />
+          </span>
+        </div>
+
+        {selected && (
+          <div
+            ref={popupRef}
+            className="absolute w-max max-w-72 bg-card border-2 border-border shadow-lg px-3 py-2 text-xs space-y-1"
+            style={{ left: 0, top: 0, visibility: 'hidden' }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                {selected.name && <div className="font-semibold">{selected.name}</div>}
+                <div className="font-mono">{selected.identifier}</div>
+              </div>
+              <button
+                onClick={() => setSelected(null)}
+                aria-label={t('map.close')}
+                className="shrink-0 text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <CloseIcon className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="font-mono text-muted-foreground">
+              X {Math.floor(selected.x)} / Y {Math.floor(selected.y)} / Z {Math.floor(selected.z)}
+            </div>
+            {addonEntityIds.has(selected.identifier) && (
+              <Link
+                to={`/results/entities/${encodeURIComponent(selected.identifier)}`}
+                className="inline-block font-heading text-[10px] font-semibold tracking-[1px] text-accent-foreground bg-accent px-2 py-1 hover:opacity-90"
+              >
+                {t('map.openEntityPage').toUpperCase()} →
+              </Link>
+            )}
+          </div>
+        )}
 
         {tileError && (
           <div className="absolute top-2 left-2 max-w-[60%] flex items-center gap-2 bg-card/95 border border-destructive px-2 py-1 text-[11px] text-destructive">
