@@ -47,11 +47,18 @@ function tintLayer(
 
 // Cache loaded images
 const imgCache = new Map<string, HTMLImageElement>()
+/** Vanilla textures come from GitHub; CORS mode keeps their pixels readable for sampling */
+function newImage(): HTMLImageElement {
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  return img
+}
+
 function loadImg(src: string): Promise<HTMLImageElement> {
   const cached = imgCache.get(src)
   if (cached) return Promise.resolve(cached)
   return new Promise((resolve) => {
-    const img = new Image()
+    const img = newImage()
     img.onload = () => { imgCache.set(src, img); resolve(img) }
     img.src = src
   })
@@ -139,7 +146,7 @@ export function BlockThumbnail({ src, faceSrc, geometry, size = 40, stripSrcs, t
     canvas.height = res
 
     if (geometry && geometry.cubes.length > 0) {
-      const img = new Image()
+      const img = newImage()
       img.onload = () => {
         if (cancelled) return
         const ctx = canvas.getContext('2d')!
@@ -165,7 +172,7 @@ export function BlockThumbnail({ src, faceSrc, geometry, size = 40, stripSrcs, t
         renderDefaultCubePerFace(ctx, top, left, right, res, [isStrip(urls.top, top), isStrip(urls.left, left), isStrip(urls.right, right)])
       })
     } else {
-      const img = new Image()
+      const img = newImage()
       img.onload = () => {
         if (cancelled) return
         const ctx = canvas.getContext('2d')!

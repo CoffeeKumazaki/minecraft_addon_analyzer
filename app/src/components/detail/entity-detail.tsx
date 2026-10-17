@@ -5,10 +5,12 @@ import { TextureThumbnail, BlockThumbnail, SpawnEggThumbnail } from './shared/th
 import { LazyModelViewer } from './shared/lazy-model-viewer'
 import { DetailHeader } from './shared/detail-layout'
 import { ReferenceList } from './shared/reference-list'
+import { SpawningItems } from './shared/spawn-links'
+import { itemsSpawning } from '@/lib/spawn-links'
 import { TagChip } from '@/components/workspace/tag-chip'
 import {
   Link2, ArrowLeftRight,
-  Brain, MapPin, Egg, Package, Box,
+  Brain, MapPin, Egg, Package, Box, PackagePlus,
 } from 'lucide-react'
 import type { EntitySpec, SpawnEggInfo, LootTableSpec, SpawnRuleSpec, SpawnCondition, TradeSpec, ItemSpec, BlockSpec } from '@/types'
 import { useLanguage } from '@/context/language-context'
@@ -317,7 +319,8 @@ function SpawnConditionDisplay({ condition, index }: { condition: SpawnCondition
 }
 
 export function EntityDetail({ entity, textureMap, geometryMap, lootTables, spawnRules, trades, items, blocks }: Props) {
-  const { language } = useLanguage()
+  const { language, t } = useLanguage()
+  const spawners = itemsSpawning(items ?? [], 'entity', entity.id)
   const texSrc = entity.textures[0] ? textureMap?.get(entity.textures[0]) : undefined
   const geoId = entity.geometries[0]
   const geometry = geoId ? geometryMap?.get(geoId) : undefined
@@ -383,6 +386,13 @@ export function EntityDetail({ entity, textureMap, geometryMap, lootTables, spaw
       {entity.spawnEgg && (
         <SectionCard title="Spawn Egg" icon={Egg}>
           <SpawnEggDisplay spawnEgg={entity.spawnEgg} textureMap={textureMap} />
+        </SectionCard>
+      )}
+
+      {/* Items that place this entity */}
+      {spawners.length > 0 && (
+        <SectionCard title={t('section.spawnedBy')} icon={PackagePlus} badge={`${spawners.length}`}>
+          <SpawningItems spawners={spawners} textureMap={textureMap} />
         </SectionCard>
       )}
 

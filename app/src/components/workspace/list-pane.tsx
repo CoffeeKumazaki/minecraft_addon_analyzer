@@ -139,23 +139,31 @@ function recipeRows(groups: RecipeGroup[], data: WorkspaceData): Row[] {
 function topFilters(rows: Row[], limit = 6): string[] {
   const counts = new Map<string, number>()
   for (const row of rows) for (const f of row.filters) counts.set(f, (counts.get(f) ?? 0) + 1)
-  return [...counts].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([f]) => f)
+  // Ties by name, so the chips don't depend on row order (which changes with the language)
+  return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).slice(0, limit).map(([f]) => f)
 }
 
 export function ListPane({ category, data, selectedId, className }: Props) {
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<string | null>(null)
   const { result, textureMap, geometryMap } = data
 
   const rows = useMemo(() => {
-    switch (category) {
-      case 'items': return itemRows(result.items, textureMap)
-      case 'blocks': return blockRows(result.blocks, textureMap, geometryMap)
-      case 'entities': return entityRows(result.entities, textureMap, geometryMap)
-      case 'recipes': return recipeRows(data.recipeGroups, data)
-    }
-  }, [category, result, textureMap, geometryMap, data])
+    const built = (() => {
+      switch (category) {
+        case 'items': return itemRows(result.items, textureMap)
+        case 'blocks': return blockRows(result.blocks, textureMap, geometryMap)
+        case 'entities': return entityRows(result.entities, textureMap, geometryMap)
+        case 'recipes': return recipeRows(data.recipeGroups, data)
+      }
+    })()
+    // Name order (numbers compared by value), id as the tie-breaker
+    const collator = new Intl.Collator(language, { numeric: true, sensitivity: 'base' })
+    const byCodeUnit = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0)
+    return built.sort((a, b) =>
+      collator.compare(a.title, b.title) || collator.compare(a.id, b.id) || byCodeUnit(a.id, b.id))
+  }, [category, result, textureMap, geometryMap, data, language])
 
   const filters = useMemo(() => topFilters(rows), [rows])
   const lowerQuery = query.trim().toLowerCase()

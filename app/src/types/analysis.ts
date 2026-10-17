@@ -84,6 +84,17 @@ export type ItemSpec = {
   stats: ItemStats;
   references: ReferenceLink[];
   diagnostics: Diagnostic[];
+  /** Entities / blocks this item spawns or places when used */
+  spawns: SpawnLink[];
+};
+
+/** What an item spawns: from entity_placer / block_placer, or inferred from scripts */
+export type SpawnLink = {
+  kind: 'entity' | 'block';
+  target: string;
+  source: 'component' | 'script';
+  /** Script file the link was inferred from */
+  sourcePath?: string;
 };
 
 export type BlockStats = {

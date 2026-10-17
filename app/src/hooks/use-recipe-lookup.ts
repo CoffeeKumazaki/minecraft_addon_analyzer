@@ -3,7 +3,7 @@ import type { RecipeSpec, ItemSpec, BlockSpec } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap, GeometryDef } from '@/analyzer/geometry-parser'
 import { loadVanillaTextureMap, getVanillaBlockNames } from '@/lib/vanilla-sprites'
-import { blockThumbnailProps } from '@/lib/thumbnail-sources'
+import { blockThumbnailProps, blockTextureUrl } from '@/lib/thumbnail-sources'
 
 export type RecipeLookup = {
   outputRecipes: Map<string, RecipeSpec[]>
@@ -100,7 +100,7 @@ export function useRecipeTextureMap(
 
     // 4. Map block IDs to their first resolvable texture
     for (const block of blocks) {
-      const url = block.textures.map(t => textureMap.get(t)).find(u => u != null)
+      const url = block.textures.map(t => blockTextureUrl(block, t, textureMap)).find(u => u != null)
       if (url) {
         combined.set(block.id, url)
         combined.set(normalizeId(block.id), url)

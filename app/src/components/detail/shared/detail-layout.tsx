@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { X, Layers, GitMerge, ArrowRightLeft, Check, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { X, Layers, GitMerge, ArrowRightLeft, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { useLanguage } from '@/context/language-context'
 import { cn } from '@/lib/utils'
 import type { Diagnostic, MenuCategory, ReferenceLink } from '@/types'
@@ -69,7 +69,7 @@ export function SummaryLine({ menuCategory, obtainCount, usedInCount, issueCount
       </span>
       <SummaryStat icon={GitMerge} label={t('detail.obtain', { n: obtainCount })} />
       <SummaryStat icon={ArrowRightLeft} label={t('detail.usedIn', { n: usedInCount })} />
-      {issueCount > 0 ? (
+      {issueCount > 0 && (
         <button
           onClick={onShowIssues}
           className="ml-auto flex items-center gap-1.5 border border-destructive px-2 py-1 text-xs text-destructive cursor-pointer hover:bg-destructive/10"
@@ -77,11 +77,6 @@ export function SummaryLine({ menuCategory, obtainCount, usedInCount, issueCount
           <TriangleAlert className="h-3 w-3" />
           {issueCount === 1 ? t('detail.issue') : t('detail.issues', { n: issueCount })}
         </button>
-      ) : (
-        <span className="ml-auto flex items-center gap-1.5 border border-border-light px-2 py-1 text-xs text-accent">
-          <Check className="h-3 w-3" />
-          {t('detail.noIssues')}
-        </span>
       )}
     </div>
   )

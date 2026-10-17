@@ -85,8 +85,8 @@ function Workspace({ result, textureMap, geometryMap, files, fileName }: Workspa
   }, [result])
 
   // Map markers link to entity details only for entities defined in the analyzed packs
-  const addonEntityIds = useMemo(
-    () => new Set(result.entities.map(e => e.id)),
+  const addonEntityNames = useMemo(
+    () => new Map(result.entities.map(e => [e.id, e.title ?? e.id])),
     [result],
   )
 
@@ -127,7 +127,7 @@ function Workspace({ result, textureMap, geometryMap, files, fileName }: Workspa
                   key={`${worldFile.name}:${worldFile.size}:${worldFile.lastModified}`}
                   file={worldFile}
                   customColors={customMapColors}
-                  addonEntityIds={addonEntityIds}
+                  addonEntityNames={addonEntityNames}
                 />
               )}
             </section>

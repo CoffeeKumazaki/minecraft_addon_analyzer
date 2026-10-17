@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { RotateCcw, RefreshCw, TriangleAlert } from 'lucide-react'
+import { RotateCcw, RefreshCw, TriangleAlert, Box } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { GeometryDef, GeometryCube, Vec3 } from '@/analyzer/geometry-parser'
 import type { FlipbookInfo } from '@/types'
@@ -30,7 +30,14 @@ export type ModelViewerProps = (
   cameraDirection?: [number, number, number]
   /** Texture URL → flipbook animation (flipbook_textures.json) */
   flipbooks?: Record<string, FlipbookInfo>
+  /** Block collision / selection boxes drawn as outlines over the model */
+  boxes?: BoundsBox[]
 }
+
+/** An axis-aligned box in block model space (origin is the min corner, like geometry cubes) */
+export type BoundsBox = { kind: 'collision' | 'selection'; label: string; origin: Vec3; size: Vec3 }
+
+const BOX_COLORS: Record<BoundsBox['kind'], string> = { collision: '#FFD27A', selection: '#7FE3FF' }
 
 /** Bedrock entities face north (-Z in scene space); view them from the north-west (front-right) */
 const DEFAULT_CAMERA_DIRECTION: [number, number, number] = [-0.7, 0.45, -1]
@@ -282,6 +289,36 @@ async function loadCubeContent(faces: CubeFaceTextures, flipbooks: Record<string
   }
 }
 
+/** Outlines drawn on top of the model so boxes inside it stay visible; selection is dashed */
+function buildBoxOutlines(boxes: BoundsBox[]): THREE.Group {
+  const group = new THREE.Group()
+  for (const box of boxes) {
+    const [ox, oy, oz] = box.origin
+    const [sx, sy, sz] = box.size
+    const solid = new THREE.BoxGeometry(sx, sy, sz)
+    const edges = new THREE.EdgesGeometry(solid)
+    solid.dispose()
+    const material = box.kind === 'selection'
+      ? new THREE.LineDashedMaterial({ color: BOX_COLORS.selection, dashSize: 1, gapSize: 0.6, depthTest: false, transparent: true })
+      : new THREE.LineBasicMaterial({ color: BOX_COLORS.collision, depthTest: false, transparent: true })
+    const lines = new THREE.LineSegments(edges, material)
+    lines.computeLineDistances()
+    lines.position.copy(toVector3(toScenePoint([ox + sx / 2, oy + sy / 2, oz + sz / 2])))
+    lines.renderOrder = 1
+    group.add(lines)
+  }
+  return group
+}
+
+function disposeBoxOutlines(group: THREE.Group) {
+  group.traverse(obj => {
+    if (obj instanceof THREE.LineSegments) {
+      obj.geometry.dispose()
+      ;(obj.material as THREE.Material).dispose()
+    }
+  })
+}
+
 // Stable per-object ids so a new GeometryDef with the same identifier still gets a fresh session
 const geometryIds = new WeakMap<GeometryDef, number>()
 let nextGeometryId = 1
@@ -324,6 +361,7 @@ export function ModelViewer(props: ModelViewerProps) {
  */
 function ModelViewerShapeScope({ shapeKey, sessionKey, ...props }: ModelViewerProps & { shapeKey: string; sessionKey: string }) {
   const [autoRotate, setAutoRotate] = useState(true)
+  const [showBoxes, setShowBoxes] = useState(true)
   const savedViewRef = useRef<SavedView | null>(null)
   return (
     <ModelViewerSession
@@ -333,6 +371,8 @@ function ModelViewerShapeScope({ shapeKey, sessionKey, ...props }: ModelViewerPr
       savedViewRef={savedViewRef}
       autoRotate={autoRotate}
       setAutoRotate={setAutoRotate}
+      showBoxes={showBoxes}
+      setShowBoxes={setShowBoxes}
     />
   )
 }
@@ -344,15 +384,19 @@ type SessionProps = ModelViewerProps & {
   savedViewRef: React.RefObject<SavedView | null>
   autoRotate: boolean
   setAutoRotate: React.Dispatch<React.SetStateAction<boolean>>
+  showBoxes: boolean
+  setShowBoxes: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 function ModelViewerSession({
-  geometry, textureSrc, materialTextures, cubeFaces, height = 360, cameraDirection = DEFAULT_CAMERA_DIRECTION, flipbooks,
-  shapeKey, savedViewRef, autoRotate, setAutoRotate,
+  geometry, textureSrc, materialTextures, cubeFaces, height = 360, cameraDirection = DEFAULT_CAMERA_DIRECTION, flipbooks, boxes,
+  shapeKey, savedViewRef, autoRotate, setAutoRotate, showBoxes, setShowBoxes,
 }: SessionProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const controlsRef = useRef<OrbitControls | null>(null)
   const autoRotateRef = useRef(autoRotate)
+  const boxGroupRef = useRef<THREE.Group | null>(null)
+  const showBoxesRef = useRef(showBoxes)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -360,10 +404,16 @@ function ModelViewerSession({
     if (controlsRef.current) controlsRef.current.autoRotate = autoRotate
   }, [autoRotate])
 
+  useEffect(() => {
+    showBoxesRef.current = showBoxes
+    if (boxGroupRef.current) boxGroupRef.current.visible = showBoxes
+  }, [showBoxes])
+
   // Compare by value so a freshly built object each render doesn't rebuild the scene
   const cubeFacesKey = cubeFaces ? JSON.stringify(BOX_FACES.map(f => cubeFaces[f] ?? null)) : null
   const materialTexturesKey = stableMapKey(materialTextures)
   const flipbookKey = flipbooksKey(flipbooks)
+  const boxesKey = boxes && boxes.length > 0 ? JSON.stringify(boxes) : ''
   const [camX, camY, camZ] = cameraDirection
 
   useEffect(() => {
@@ -400,6 +450,14 @@ function ModelViewerSession({
     gridMaterial.transparent = true
     gridMaterial.opacity = 0.5
     scene.add(grid)
+
+    // Kept out of the model so it doesn't affect framing
+    const boxGroup = boxesKey ? buildBoxOutlines(JSON.parse(boxesKey) as BoundsBox[]) : null
+    if (boxGroup) {
+      boxGroup.visible = showBoxesRef.current
+      scene.add(boxGroup)
+      boxGroupRef.current = boxGroup
+    }
 
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 5000)
     const controls = new OrbitControls(camera, renderer.domElement)
@@ -507,10 +565,14 @@ function ModelViewerSession({
       }
       grid.geometry.dispose()
       gridMaterial.dispose()
+      if (boxGroup) {
+        disposeBoxOutlines(boxGroup)
+        boxGroupRef.current = null
+      }
       renderer.dispose()
       renderer.domElement.remove()
     }
-  }, [geometry, textureSrc, materialTexturesKey, cubeFacesKey, flipbookKey, camX, camY, camZ, shapeKey, savedViewRef, setAutoRotate])
+  }, [geometry, textureSrc, materialTexturesKey, cubeFacesKey, flipbookKey, boxesKey, camX, camY, camZ, shapeKey, savedViewRef, setAutoRotate])
 
   const handleReset = () => {
     controlsRef.current?.reset()
@@ -529,6 +591,20 @@ function ModelViewerSession({
     <div className="relative border border-border-light bg-secondary/50" style={{ height }}>
       <div ref={containerRef} className="absolute inset-0 cursor-grab active:cursor-grabbing" />
       <div className="absolute top-2 right-2 flex gap-1">
+        {boxesKey && (
+          <button
+            type="button"
+            onClick={() => setShowBoxes(v => !v)}
+            title="Show collision / selection boxes"
+            aria-pressed={showBoxes}
+            className={cn(
+              'p-1.5 border border-border bg-card hover:bg-secondary transition-colors',
+              showBoxes && 'bg-accent text-accent-foreground hover:bg-accent/90',
+            )}
+          >
+            <Box className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setAutoRotate(v => !v)}
@@ -552,6 +628,27 @@ function ModelViewerSession({
       <p className="absolute bottom-2 left-2 text-[10px] text-muted-foreground pointer-events-none select-none">
         Drag: rotate · Scroll: zoom · Right-drag: pan
       </p>
+      {boxes && boxes.length > 0 && showBoxes && (
+        <ul className="absolute bottom-2 right-2 space-y-0.5 bg-card/80 border border-border-light px-2 py-1 text-[10px] text-subtle pointer-events-none select-none">
+          {(['collision', 'selection'] as const).map(kind => {
+            const ofKind = boxes.filter(box => box.kind === kind)
+            if (ofKind.length === 0) return null
+            return (
+              <li key={kind} className="flex items-center gap-1.5">
+                <span
+                  className={cn('inline-block w-3 border-t-2', kind === 'selection' && 'border-dashed')}
+                  style={{ borderColor: BOX_COLORS[kind] }}
+                />
+                {ofKind[0].label}
+                <span className="font-mono text-muted-foreground">
+                  {/* Several collision boxes: show how many instead of one size */}
+                  {ofKind.length === 1 ? ofKind[0].size.join('×') : `×${ofKind.length}`}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }

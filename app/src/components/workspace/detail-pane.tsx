@@ -24,7 +24,7 @@ function DetailContent({ category, id, data }: Required<Omit<Props, 'className'>
   switch (category) {
     case 'items': {
       const item = result.items.find(i => i.id === id)
-      if (item) return <ItemDetail item={item} textureMap={textureMap} recipeTextureMap={recipeTextureMap} blockRenderMap={blockRenderMap} recipeLookup={recipeLookup} />
+      if (item) return <ItemDetail item={item} textureMap={textureMap} recipeTextureMap={recipeTextureMap} blockRenderMap={blockRenderMap} recipeLookup={recipeLookup} geometryMap={geometryMap} entities={result.entities} blocks={result.blocks} />
       break
     }
     case 'blocks': {

@@ -1,5 +1,5 @@
 import type { BlockSpec } from '@/types'
-import type { TextureMap } from '@/analyzer/texture-extractor'
+import { terrainTextureKey, type TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
 
 /**
@@ -9,7 +9,8 @@ import type { GeometryMap } from '@/analyzer/geometry-parser'
 export function blockTextureUrl(block: BlockSpec, name: string, textureMap: TextureMap | null): string | undefined {
   if (!textureMap) return undefined
   const strip = block.flipbooks?.[name]?.texture
-  return (strip ? textureMap.get(strip) : undefined) ?? textureMap.get(name)
+  // Block texture names live in the terrain atlas only (an item icon of the same name doesn't apply)
+  return (strip ? textureMap.get(strip) : undefined) ?? textureMap.get(terrainTextureKey(name))
 }
 
 /** URLs of the flipbook strips a block uses, so thumbnails draw only their first frame */

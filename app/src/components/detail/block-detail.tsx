@@ -5,6 +5,8 @@ import { BlockThumbnail, TextureThumbnail } from './shared/thumbnails'
 import { LazyModelViewer } from './shared/lazy-model-viewer'
 import { DetailHeader, SummaryLine, DetailTabBar, DetailTabPanel, IssueList, Section, PropertyGroups, ComponentsTable, EmptyNote, type PropertyGroup } from './shared/detail-layout'
 import { RecipeCards } from './shared/recipe-diagrams'
+import { SpawningItems } from './shared/spawn-links'
+import { itemsSpawning } from '@/lib/spawn-links'
 import { TagChip } from '@/components/workspace/tag-chip'
 import { blockThumbnailProps, blockTextureUrl } from '@/lib/thumbnail-sources'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
@@ -13,7 +15,8 @@ import { useLanguage } from '@/context/language-context'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
 import type { BlockRenderMap } from '@/hooks/use-recipe-lookup'
-import type { CubeFaceTextures } from './shared/model-viewer'
+import type { CubeFaceTextures, BoundsBox } from './shared/model-viewer'
+import type { Vec3 } from '@/analyzer/geometry-parser'
 import { BOX_FACES, SIDE_FACES } from '@/lib/bedrock-geometry'
 
 /** View blocks from the north-west like the isometric thumbnails (north bottom-left, west bottom-right) */
@@ -42,6 +45,36 @@ function resolveMaterialTextures(block: BlockSpec, textureMap: TextureMap | null
     if (src) result[name] = src
   }
   return result
+}
+
+const FULL_BLOCK_BOX = { origin: [-8, 0, -8] as Vec3, size: [16, 16, 16] as Vec3 }
+
+function isVec3(value: unknown): value is Vec3 {
+  return Array.isArray(value) && value.length === 3 && value.every(n => typeof n === 'number' && Number.isFinite(n))
+}
+
+/** One box value: true is the full block; omitted origin / size take the full-block defaults */
+function parseBox(value: unknown): { origin: Vec3; size: Vec3 } | null {
+  if (value === true) return FULL_BLOCK_BOX
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const { origin = FULL_BLOCK_BOX.origin, size = FULL_BLOCK_BOX.size } = value as Record<string, unknown>
+  if (!isVec3(origin) || !isVec3(size) || size.some(s => s <= 0)) return null
+  return { origin, size }
+}
+
+/**
+ * minecraft:collision_box / selection_box as outlines; false or absent draws nothing.
+ * collision_box may also be a list of boxes.
+ */
+function blockBoxes(components: Record<string, unknown>, t: (key: string) => string): BoundsBox[] {
+  const kinds = [['collision', 'minecraft:collision_box'], ['selection', 'minecraft:selection_box']] as const
+  return kinds.flatMap(([kind, component]) => {
+    const value = components[component]
+    return (Array.isArray(value) ? value : [value]).flatMap(v => {
+      const box = parseBox(v)
+      return box ? [{ kind, label: t(`box.${kind}`), ...box }] : []
+    })
+  })
 }
 
 function blockPropertyGroups(stats: BlockStats, t: (key: string) => string): PropertyGroup[] {
@@ -189,6 +222,10 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
   const groups = blockPropertyGroups(block.stats, t)
   const lootTable = block.lootTable && lootTables ? findLootTable(block.lootTable, lootTables) : undefined
   const hasModel = (geometry && geometry.cubes.length > 0) || cubeFaces
+  const boxes = blockBoxes(block.components, t)
+  const spawners = itemsSpawning(items ?? [], 'block', block.id)
+  // The same texture can back several faces or permutations
+  const textureNames = [...new Set(block.textures)]
 
   return (
     <div className="pb-8">
@@ -222,15 +259,20 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
           <>
             {hasModel && (
               geometry
-                ? <LazyModelViewer key={block.id} geometry={geometry} textureSrc={viewerTexture} materialTextures={materialTextures} cameraDirection={BLOCK_CAMERA_DIRECTION} flipbooks={flipbooks} />
-                : <LazyModelViewer key={block.id} cubeFaces={cubeFaces!} cameraDirection={BLOCK_CAMERA_DIRECTION} flipbooks={flipbooks} />
+                ? <LazyModelViewer key={block.id} geometry={geometry} textureSrc={viewerTexture} materialTextures={materialTextures} cameraDirection={BLOCK_CAMERA_DIRECTION} flipbooks={flipbooks} boxes={boxes} />
+                : <LazyModelViewer key={block.id} cubeFaces={cubeFaces!} cameraDirection={BLOCK_CAMERA_DIRECTION} flipbooks={flipbooks} boxes={boxes} />
             )}
             <PropertyGroups groups={groups} />
+            {spawners.length > 0 && (
+              <Section title={t('section.spawnedBy')} count={spawners.length}>
+                <SpawningItems spawners={spawners} textureMap={textureMap} />
+              </Section>
+            )}
             {lootTable && <BlockDrops lootTable={lootTable} items={items ?? []} textureMap={textureMap} />}
-            {block.textures.length > 0 && (
-              <Section title={t('section.textures')} count={block.textures.length}>
+            {textureNames.length > 0 && (
+              <Section title={t('section.textures')} count={textureNames.length}>
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-2">
-                  {block.textures.map(tex => {
+                  {textureNames.map(tex => {
                     const src = blockTextureUrl(block, tex, textureMap)
                     return (
                       <div key={tex} className="flex flex-col items-center gap-1.5">

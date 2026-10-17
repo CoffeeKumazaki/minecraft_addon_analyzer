@@ -4,6 +4,16 @@ import { resolveTexturePath } from '@/lib/texture-utils'
 
 export type TextureMap = Map<string, string>
 
+/** Short names the packs' atlases declare, whether or not their image exists */
+export type DeclaredAtlasNames = { item: Set<string>; terrain: Set<string> }
+
+const TERRAIN_ATLAS = 'textures/terrain_texture.json'
+
+/** Map key of a terrain_texture.json (block) entry, kept apart from item_texture.json names */
+export function terrainTextureKey(shortName: string): string {
+  return `terrain:${shortName}`
+}
+
 /**
  * Extract texture images from VirtualFS and create blob URLs.
  * Reads item_texture.json and terrain_texture.json to resolve
@@ -12,12 +22,14 @@ export type TextureMap = Map<string, string>
 export function extractTextureMap(
   files: VirtualFS,
   packPaths: string[],
+  /** Filled with every declared atlas name, so a missing image is not papered over by vanilla */
+  declared?: DeclaredAtlasNames,
 ): TextureMap {
   const map: TextureMap = new Map()
 
   const atlasFiles = [
     'textures/item_texture.json',
-    'textures/terrain_texture.json',
+    TERRAIN_ATLAS,
   ]
 
   for (const packPath of packPaths) {
@@ -34,8 +46,14 @@ export function extractTextureMap(
       const textureData = root.texture_data as Record<string, unknown> | undefined
       if (!textureData) continue
 
+      const isTerrain = atlasFile === TERRAIN_ATLAS
       for (const [shortName, entry] of Object.entries(textureData)) {
-        if (map.has(shortName)) continue
+        declared?.[isTerrain ? 'terrain' : 'item'].add(shortName)
+        // Item and terrain atlases are separate namespaces: the same short name
+        // can mean an item icon in one and a block texture in the other
+        const keys = [shortName, ...(isTerrain ? [terrainTextureKey(shortName)] : [])]
+          .filter(key => !map.has(key))
+        if (keys.length === 0) continue
         if (!entry || typeof entry !== 'object') continue
 
         const texField = (entry as Record<string, unknown>).textures
@@ -44,7 +62,7 @@ export function extractTextureMap(
 
         const blobUrl = tryCreateBlobUrl(files, packPath, texPath)
         if (blobUrl) {
-          map.set(shortName, blobUrl)
+          for (const key of keys) map.set(key, blobUrl)
         }
       }
     }
@@ -70,6 +88,27 @@ export function extractTextureMap(
   }
 
   return map
+}
+
+/**
+ * Fill atlas names the packs don't declare with vanilla textures, as the game merges add-on
+ * atlases over the vanilla ones: vanilla terrain names under terrain keys (blocks), vanilla
+ * item names under plain keys (item icons). Names a pack declares keep their own entry, even
+ * when its image is missing, so the broken reference is still reported.
+ */
+export function addVanillaFallbacks(
+  map: TextureMap,
+  declared: DeclaredAtlasNames,
+  vanillaItems: Map<string, string>,
+  vanillaTerrain: Map<string, string>,
+): void {
+  for (const [name, url] of vanillaTerrain) {
+    const key = terrainTextureKey(name)
+    if (!declared.terrain.has(name) && !map.has(key)) map.set(key, url)
+  }
+  for (const [name, url] of vanillaItems) {
+    if (!declared.item.has(name) && !map.has(name)) map.set(name, url)
+  }
 }
 
 /**

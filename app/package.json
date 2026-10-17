@@ -26,6 +26,7 @@
     "@fontsource/m-plus-1-code": "^5.3.1",
     "@fontsource/m-plus-1p": "^5.2.9",
     "@fontsource/space-grotesk": "^5.2.10",
+    "acorn": "^8.19.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jszip": "^3.10.1",

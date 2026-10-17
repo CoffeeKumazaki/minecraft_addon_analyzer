@@ -1,3 +1,5 @@
+import { extractGeoId, FULL_BLOCK_GEOMETRY } from '../analyzers/block-analyzer'
+
 type TagRule = {
   tag: string;
   check: (components: Record<string, unknown>) => boolean;
@@ -5,11 +7,9 @@ type TagRule = {
 
 const rules: TagRule[] = [
   {
-    tag: 'destructible',
-    check: (c) => {
-      const dest = c['minecraft:destructible_by_mining'] ?? c['minecraft:destroy_time']
-      return dest !== undefined && dest !== false
-    },
+    // Blocks can be mined by default; only those that opt out are notable
+    tag: 'indestructible',
+    check: (c) => c['minecraft:destructible_by_mining'] === false || c['minecraft:destroy_time'] === -1,
   },
   {
     tag: 'transparent',
@@ -26,8 +26,9 @@ const rules: TagRule[] = [
     },
   },
   {
-    tag: 'collision',
-    check: (c) => has(c, 'minecraft:collision_box') || has(c, 'minecraft:selection_box'),
+    // Blocks collide as a full cube by default; only those without collision are notable
+    tag: 'no_collision',
+    check: (c) => c['minecraft:collision_box'] === false,
   },
   {
     tag: 'emissive',
@@ -50,7 +51,10 @@ const rules: TagRule[] = [
   },
   {
     tag: 'custom_geo',
-    check: (c) => has(c, 'minecraft:geometry') || has(c, 'minecraft:custom_geometry'),
+    check: (c) => {
+      const geoId = extractGeoId(c['minecraft:geometry'])
+      return (geoId != null && geoId !== FULL_BLOCK_GEOMETRY) || has(c, 'minecraft:custom_geometry')
+    },
   },
 ]
 

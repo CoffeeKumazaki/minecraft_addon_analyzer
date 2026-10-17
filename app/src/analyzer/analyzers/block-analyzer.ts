@@ -37,7 +37,10 @@ export function analyzeBlocks(files: VirtualFS, blockPaths: string[]): BlockSpec
   return blocks
 }
 
-function extractGeoId(geo: unknown): string | null {
+/** Vanilla geometry for a plain 16×16×16 cube */
+export const FULL_BLOCK_GEOMETRY = 'minecraft:geometry.full_block'
+
+export function extractGeoId(geo: unknown): string | null {
   if (!geo) return null
   if (typeof geo === 'string') return geo || null
   if (typeof geo === 'object') {
@@ -80,6 +83,18 @@ function findInPermutations(blockDef: Record<string, unknown>, key: string): unk
   return undefined
 }
 
+/** First permutation geometry that is a real model (not the built-in full block) */
+function findCustomGeometryInPermutations(blockDef: Record<string, unknown>): string | undefined {
+  const permutations = blockDef.permutations
+  if (!Array.isArray(permutations)) return undefined
+  for (const perm of permutations) {
+    const permComponents = (perm as Record<string, unknown> | null)?.components as Record<string, unknown> | undefined
+    const id = permComponents ? extractGeoId(permComponents['minecraft:geometry']) : null
+    if (id && id !== FULL_BLOCK_GEOMETRY) return id
+  }
+  return undefined
+}
+
 function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockSpec | null {
   const blockDef = root['minecraft:block'] as Record<string, unknown> | undefined
   if (!blockDef) return null
@@ -118,10 +133,11 @@ function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockS
 
   // Extract geometry (top-level, then fallback to permutations)
   let geoId = extractGeoId(components['minecraft:geometry'])
-  if (!geoId) {
-    geoId = extractGeoId(findInPermutations(blockDef, 'minecraft:geometry'))
+  if (!geoId || geoId === FULL_BLOCK_GEOMETRY) {
+    geoId = findCustomGeometryInPermutations(blockDef) ?? geoId
   }
-  if (geoId) {
+  // The built-in full block is a plain cube with no model file to resolve
+  if (geoId && geoId !== FULL_BLOCK_GEOMETRY) {
     references.push({ kind: 'geometry', target: geoId, resolved: false })
   }
 

@@ -3,12 +3,14 @@ import { Package, Swords, Shirt, Drumstick, Hourglass, Crosshair, Flame } from '
 import { ReferenceList } from './shared/reference-list'
 import { TextureThumbnail } from './shared/thumbnails'
 import { RecipeCards } from './shared/recipe-diagrams'
+import { SpawnTargets } from './shared/spawn-links'
 import { DetailHeader, SummaryLine, DetailTabBar, DetailTabPanel, IssueList, Section, PropertyGroups, ComponentsTable, EmptyNote, type PropertyGroup } from './shared/detail-layout'
 import { TagChip } from '@/components/workspace/tag-chip'
 import { useLanguage } from '@/context/language-context'
 import { lookupRecipesForId, type RecipeLookup, type BlockRenderMap } from '@/hooks/use-recipe-lookup'
-import type { ItemSpec, ItemStats } from '@/types'
+import type { BlockSpec, EntitySpec, ItemSpec, ItemStats } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
+import type { GeometryMap } from '@/analyzer/geometry-parser'
 
 type Props = {
   item: ItemSpec
@@ -16,6 +18,9 @@ type Props = {
   recipeTextureMap: TextureMap | null
   blockRenderMap?: BlockRenderMap | null
   recipeLookup: RecipeLookup | null
+  geometryMap: GeometryMap | null
+  entities: EntitySpec[]
+  blocks: BlockSpec[]
 }
 
 const shortSlot = (slot: string) => slot.replace(/^slot\.(armor|weapon)\./, '')
@@ -70,7 +75,7 @@ function itemPropertyGroups(stats: ItemStats, t: (key: string) => string): Prope
   return groups
 }
 
-export function ItemDetail({ item, textureMap, recipeTextureMap, blockRenderMap, recipeLookup }: Props) {
+export function ItemDetail({ item, textureMap, recipeTextureMap, blockRenderMap, recipeLookup, geometryMap, entities, blocks }: Props) {
   const { t } = useLanguage()
   const [tab, setTab] = useState('overview')
   const iconSrc = item.icon ? textureMap?.get(item.icon) : undefined
@@ -111,6 +116,11 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, blockRenderMap,
         {tab === 'overview' && (
           <>
             <PropertyGroups groups={groups} />
+            {item.spawns.length > 0 && (
+              <Section title={t('section.spawns')} count={item.spawns.length}>
+                <SpawnTargets item={item} entities={entities} blocks={blocks} textureMap={textureMap} geometryMap={geometryMap} />
+              </Section>
+            )}
             {obtainRecipes.length > 0 && (
               <Section title={t('section.obtain')} count={obtainRecipes.length}>
                 <RecipeCards recipes={obtainRecipes.slice(0, 1)} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />
@@ -121,7 +131,7 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, blockRenderMap,
                 <RecipeCards recipes={usedInRecipes.slice(0, 2)} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />
               </Section>
             )}
-            {groups.length === 0 && obtainRecipes.length === 0 && usedInRecipes.length === 0 && <EmptyNote>{t('detail.nothing')}</EmptyNote>}
+            {groups.length === 0 && item.spawns.length === 0 && obtainRecipes.length === 0 && usedInRecipes.length === 0 && <EmptyNote>{t('detail.nothing')}</EmptyNote>}
           </>
         )}
         {tab === 'obtain' && <RecipeCards recipes={obtainRecipes} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />}
