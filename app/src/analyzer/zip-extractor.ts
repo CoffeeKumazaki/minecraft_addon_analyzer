@@ -1,10 +1,12 @@
 import JSZip from 'jszip'
 import type { VirtualFS, Diagnostic } from '@/types'
+import { ZipReader } from '@/world/zip-reader'
 
 /**
  * Extract a ZIP file into a VirtualFS.
  * Handles .mcaddon files that contain nested .mcpack ZIPs.
- * Handles .mcworld files by skipping db/ and level.dat (memory optimization).
+ * Handles .mcworld files by skipping db/ and level.dat; these are read with a
+ * random-access reader so the (possibly huge) world data is never loaded.
  * Includes path traversal protection.
  */
 export async function extractZip(
@@ -17,23 +19,29 @@ export async function extractZip(
 
   onProgress?.('ZIP を展開中...', 10)
 
-  let zip: JSZip
-  try {
-    zip = await JSZip.loadAsync(file)
-  } catch {
-    throw new Error('ZIP ファイルの展開に失敗しました。ファイルが破損している可能性があります。')
+  // Collect entries as (path, reader) pairs
+  const entries: [string, () => Promise<Uint8Array>][] = []
+  const worldZip = isMcworld ? await ZipReader.open(file).catch(() => null) : null
+  if (worldZip) {
+    for (const name of worldZip.entries.keys()) {
+      entries.push([name, () => worldZip.read(name)])
+    }
+  } else {
+    let zip: JSZip
+    try {
+      zip = await JSZip.loadAsync(file)
+    } catch {
+      throw new Error('ZIP ファイルの展開に失敗しました。ファイルが破損している可能性があります。')
+    }
+    zip.forEach((path, entry) => {
+      if (!entry.dir) entries.push([path, () => entry.async('uint8array')])
+    })
   }
-
-  // Collect entries
-  const entries: [string, JSZip.JSZipObject][] = []
-  zip.forEach((path, entry) => {
-    if (!entry.dir) entries.push([path, entry])
-  })
 
   // First pass: extract all files, detect nested .mcpack
   const nestedPacks: [string, Uint8Array][] = []
 
-  for (const [rawPath, entry] of entries) {
+  for (const [rawPath, readEntry] of entries) {
     const path = normalizePath(rawPath)
 
     // Path traversal protection
@@ -51,7 +59,7 @@ export async function extractZip(
     if (isMcworld && shouldSkipMcworldEntry(path)) continue
 
     try {
-      const data = await entry.async('uint8array')
+      const data = await readEntry()
 
       if (path.toLowerCase().endsWith('.mcpack') || path.toLowerCase().endsWith('.zip')) {
         // Nested ZIP - queue for recursive extraction
@@ -121,11 +129,14 @@ function isUnsafePath(path: string): boolean {
   return segments.some(s => s === '..') || path.startsWith('/')
 }
 
-const MCWORLD_SKIP_PREFIXES = ['db/']
+const MCWORLD_SKIP_DIRS = ['db']
 const MCWORLD_SKIP_FILES = ['level.dat', 'level.dat_old']
 
+/** World data is skipped whether the world sits at the archive root or inside one folder */
 function shouldSkipMcworldEntry(path: string): boolean {
-  const lower = path.toLowerCase()
-  return MCWORLD_SKIP_PREFIXES.some(p => lower.startsWith(p))
-    || MCWORLD_SKIP_FILES.some(f => lower === f)
+  const segments = path.toLowerCase().split('/')
+  const dirs = segments.slice(0, -1)
+  const fileName = segments[segments.length - 1]
+  return dirs.slice(0, 2).some(s => MCWORLD_SKIP_DIRS.includes(s))
+    || (dirs.length <= 1 && MCWORLD_SKIP_FILES.includes(fileName))
 }

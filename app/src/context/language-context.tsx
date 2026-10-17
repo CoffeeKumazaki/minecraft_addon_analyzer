@@ -61,6 +61,24 @@ const translations: Record<string, Record<Language, string>> = {
   'state_change': { en: 'State Change', ja: '状態変化あり' },
   'interactive': { en: 'Interactive', ja: 'インタラクト可能' },
   'custom_geo': { en: 'Custom Geo', ja: '特殊形状' },
+  // World map
+  'map.title': { en: 'World Map', ja: 'ワールドマップ' },
+  'map.overworld': { en: 'Overworld', ja: 'オーバーワールド' },
+  'map.nether': { en: 'Nether', ja: 'ネザー' },
+  'map.end': { en: 'End', ja: 'エンド' },
+  'map.loading': { en: 'Opening world...', ja: 'ワールドを開いています...' },
+  'map.spawn': { en: 'Go to spawn', ja: 'スポーン地点へ' },
+  'map.hint': { en: 'Drag to pan, scroll to zoom', ja: 'ドラッグで移動・ホイールで拡大縮小' },
+  'map.tileError': { en: 'Failed to read some areas', ja: '読み込めなかった範囲があります' },
+  'map.retry': { en: 'Retry', ja: '再試行' },
+  'map.jump': { en: 'Go', ja: '移動' },
+  'map.entities': { en: 'Entities', ja: 'エンティティ' },
+  'map.addonOnly': { en: 'Add-on only', ja: 'アドオンのみ' },
+  'map.openEntityPage': { en: 'Open entity page', ja: 'エンティティページへ' },
+  'map.close': { en: 'Close', ja: '閉じる' },
+  'map.entitiesScope': { en: 'Shows entities and players saved in the 1.18.30+ format. Older-format entities and block entities (chests, signs, ...) are not shown.', ja: '1.18.30 以降の形式で保存されたエンティティとプレイヤーを表示します。旧形式のエンティティとブロックエンティティ（チェスト・看板など）は表示しません。' },
+  'map.entitiesSkipped': { en: 'Unreadable entities', ja: '読めなかったエンティティ' },
+  'map.entitiesTruncated': { en: 'Too many entities; some are not shown', ja: 'エンティティが多すぎるため一部を表示していません' },
 }
 
 function formatCount(count: number, type: 'items' | 'mobs', lang: Language): string {

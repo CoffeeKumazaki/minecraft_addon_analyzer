@@ -47,13 +47,10 @@ export async function analyzeAddon(
   // Step 2: Detect packs
   onProgress?.('パックを検出中...', 35)
   const { packs: packRoots, diagnostics: packDiags } = detectPacks(files)
-  allDiagnostics.push(...packDiags)
-
   const isMcworld = fileList.some(f => f.name.toLowerCase().endsWith('.mcworld'))
 
-  if (packRoots.length === 0 && isMcworld) {
-    throw new Error('この .mcworld ファイルにはアドオン（behavior_packs / resource_packs）が含まれていません。')
-  }
+  // A world without add-ons is still useful (world map), so a missing manifest is not an error there
+  allDiagnostics.push(...(isMcworld ? packDiags.filter(d => d.code !== 'manifest_not_found') : packDiags))
 
   // Step 3: Parse manifests
   onProgress?.('マニフェストを解析中...', 40)
