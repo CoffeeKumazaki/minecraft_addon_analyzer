@@ -3,9 +3,14 @@ import { Badge } from '@/components/ui/badge'
 import { SectionCard } from './shared/section-card'
 import { TextureThumbnail, BlockThumbnail, SpawnEggThumbnail } from './shared/thumbnails'
 import { LazyModelViewer } from './shared/lazy-model-viewer'
+import { DetailHeader } from './shared/detail-layout'
+import { ReferenceList } from './shared/reference-list'
+import { SpawningItems } from './shared/spawn-links'
+import { itemsSpawning } from '@/lib/spawn-links'
+import { TagChip } from '@/components/workspace/tag-chip'
 import {
-  Heart, Zap, Sword, ArrowLeftRight,
-  Brain, MapPin, Egg, Package, Box,
+  Link2, ArrowLeftRight,
+  Brain, MapPin, Egg, Package, Box, PackagePlus,
 } from 'lucide-react'
 import type { EntitySpec, SpawnEggInfo, LootTableSpec, SpawnRuleSpec, SpawnCondition, TradeSpec, ItemSpec, BlockSpec } from '@/types'
 import { useLanguage } from '@/context/language-context'
@@ -27,15 +32,6 @@ type Props = {
 
 function stripMinecraft(s: string): string {
   return s.replace(/^minecraft:/, '')
-}
-
-function StatPill({ icon: Icon, iconColor, label, value }: { icon: React.ElementType; iconColor: string; label: string; value: string | number }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 bg-secondary px-2.5 py-1">
-      <Icon className={`h-3 w-3 ${iconColor}`} />
-      <span className="font-heading text-[11px] font-semibold text-foreground">{label} {value}</span>
-    </span>
-  )
 }
 
 function SpawnEggDisplay({ spawnEgg, textureMap }: { spawnEgg: SpawnEggInfo; textureMap: TextureMap | null }) {
@@ -323,42 +319,56 @@ function SpawnConditionDisplay({ condition, index }: { condition: SpawnCondition
 }
 
 export function EntityDetail({ entity, textureMap, geometryMap, lootTables, spawnRules, trades, items, blocks }: Props) {
-  const { t } = useLanguage()
+  const { language, t } = useLanguage()
+  const spawners = itemsSpawning(items ?? [], 'entity', entity.id)
   const texSrc = entity.textures[0] ? textureMap?.get(entity.textures[0]) : undefined
   const geoId = entity.geometries[0]
   const geometry = geoId ? geometryMap?.get(geoId) : undefined
   const viewableGeometries = geometryMap ? entity.geometries.filter(g => geometryMap.get(g)?.cubes.length) : []
 
-  return (
-    <div className="space-y-5">
-      {/* Unified header card */}
-      <div className="border-2 border-border bg-card p-5">
-        <div className="flex items-start gap-4">
-          {geometry
-            ? <BlockThumbnail src={texSrc} geometry={geometry} size={64} />
-            : <TextureThumbnail src={texSrc} size={64} />}
-          <div className="flex-1 min-w-0 space-y-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="font-heading text-xl font-bold tracking-[-1px]">{entity.title ?? entity.id}</h2>
-              {entity.family && entity.family.map(f => (
-                <Badge key={f} variant="outline" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none border-border py-0">{f.toUpperCase()}</Badge>
-              ))}
-              {entity.tags.map(tag => (
-                <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{t(tag).toUpperCase()}</Badge>
-              ))}
-            </div>
-            <p className="text-[11px] text-muted-foreground font-mono">{entity.id}</p>
-            {(entity.health != null || entity.attackDamage != null || entity.movement != null) && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {entity.health != null && <StatPill icon={Heart} iconColor="text-destructive" label="HP" value={entity.health} />}
-                {entity.attackDamage != null && <StatPill icon={Sword} iconColor="text-orange-500" label="ATK" value={entity.attackDamage} />}
-                {entity.movement != null && <StatPill icon={Zap} iconColor="text-accent" label="SPEED" value={entity.movement} />}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+  const stats = [
+    entity.health != null && { label: 'HP', value: String(entity.health), className: 'text-destructive' },
+    entity.attackDamage != null && { label: 'ATK', value: String(entity.attackDamage), className: 'text-gold' },
+    entity.movement != null && { label: 'SPEED', value: String(entity.movement), className: 'text-accent' },
+    entity.family?.length && { label: 'FAMILY', value: entity.family[0], extra: entity.family.length > 1 ? `+${entity.family.length - 1}` : undefined, className: 'text-foreground' },
+  ].filter(Boolean) as { label: string; value: string; extra?: string; className: string }[]
 
+  return (
+    <div className="pb-8">
+      <DetailHeader
+        crumb={`ENTITY / ${entity.id}`}
+        closeTo="/results/entities"
+        thumbnail={geometry
+          ? <BlockThumbnail src={texSrc} geometry={geometry} size={48} />
+          : <TextureThumbnail src={texSrc} size={40} />}
+        title={entity.title ?? entity.id}
+        path={entity.sourcePath}
+      >
+        {stats.length > 0 && (
+          <div className="flex border border-border-light">
+            {stats.map(stat => (
+              <div key={stat.label} className="flex-1 border-r border-border-light last:border-r-0 px-3 py-2.5 space-y-1" title={stat.label === 'FAMILY' ? entity.family?.join(', ') : undefined}>
+                <p className="font-mono text-[10px] tracking-[1.5px] text-muted-foreground">{stat.label}</p>
+                <p className={cn('font-mono text-xl font-semibold', stat.className)}>
+                  {stat.value}
+                  {stat.extra && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{stat.extra}</span>}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+        {(entity.tags.length > 0 || (entity.family?.length ?? 0) > 1) && (
+          <div className="flex flex-wrap gap-1.5 pb-4 border-b border-border-light">
+            {/* Every family is listed; the stat cell above only has room for the first */}
+            {(entity.family?.length ?? 0) > 1 && entity.family!.map(f => (
+              <span key={`family:${f}`} className="border border-border px-2 py-0.5 font-mono text-[11px] text-subtle">{f}</span>
+            ))}
+            {entity.tags.map(tag => <TagChip key={tag} tag={tag} className="bg-secondary px-2 py-1 text-xs" />)}
+          </div>
+        )}
+      </DetailHeader>
+
+      <div className="px-7 pt-5 space-y-6">
       {/* 3D Model */}
       {geometryMap && viewableGeometries.length > 0 && (
         <SectionCard title="3D Model" icon={Box}>
@@ -376,6 +386,13 @@ export function EntityDetail({ entity, textureMap, geometryMap, lootTables, spaw
       {entity.spawnEgg && (
         <SectionCard title="Spawn Egg" icon={Egg}>
           <SpawnEggDisplay spawnEgg={entity.spawnEgg} textureMap={textureMap} />
+        </SectionCard>
+      )}
+
+      {/* Items that place this entity */}
+      {spawners.length > 0 && (
+        <SectionCard title={t('section.spawnedBy')} icon={PackagePlus} badge={`${spawners.length}`}>
+          <SpawningItems spawners={spawners} textureMap={textureMap} />
         </SectionCard>
       )}
 
@@ -468,7 +485,7 @@ export function EntityDetail({ entity, textureMap, geometryMap, lootTables, spaw
 
       {/* Behaviors */}
       {entity.behaviors.length > 0 && (() => {
-        const isJa = t('items') !== 'Items'
+        const isJa = language === 'ja'
         const grouped = new Map<string, { label: string; key: string }[]>()
         const unknown: string[] = []
         for (const b of entity.behaviors) {
@@ -535,6 +552,13 @@ export function EntityDetail({ entity, textureMap, geometryMap, lootTables, spaw
         )
       })()}
 
+      {/* References */}
+      {entity.references.length > 0 && (
+        <SectionCard title="References" icon={Link2} badge={`${entity.references.length}`} defaultOpen={false}>
+          <ReferenceList references={entity.references} />
+        </SectionCard>
+      )}
+      </div>
     </div>
   )
 }

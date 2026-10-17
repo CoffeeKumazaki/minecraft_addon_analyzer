@@ -7,6 +7,7 @@
 
 import { buildEducationTextureMap } from '@/lib/education-textures'
 import { parseJsonSafe } from '@/lib/json-parser'
+import { resolveTexturePath } from '@/lib/texture-utils'
 
 const BEDROCK_SAMPLES_TAG = 'v1.26.10.4'
 const RAW_BASE = `https://raw.githubusercontent.com/Mojang/bedrock-samples/${BEDROCK_SAMPLES_TAG}/resource_pack/`
@@ -20,6 +21,13 @@ type TextureAtlas = {
 let vanillaTextureMapCache: Map<string, string> | null = null
 /** Set of names that came from terrain_texture.json (block textures) */
 let vanillaBlockNamesCache: Set<string> | null = null
+/** terrain_texture.json keys only (no aliases): what a block's texture name resolves to in game */
+let vanillaTerrainMapCache: Map<string, string> | null = null
+/** item_texture.json keys only (no aliases): what an item icon name resolves to in game */
+let vanillaItemMapCache: Map<string, string> | null = null
+
+/** Atlases come from GitHub; a stalled request must not hold up analysis */
+const FETCH_TIMEOUT_MS = 10_000
 let loadPromise: Promise<Map<string, string>> | null = null
 
 function textureToPngUrl(relativePath: string): string {
@@ -28,7 +36,7 @@ function textureToPngUrl(relativePath: string): string {
 
 async function fetchTextureAtlas(jsonFile: string): Promise<TextureAtlas | null> {
   try {
-    const res = await fetch(`${RAW_BASE}${jsonFile}`)
+    const res = await fetch(`${RAW_BASE}${jsonFile}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
     if (!res.ok) return null
     const text = await res.text()
     const { data } = parseJsonSafe(text)
@@ -44,12 +52,15 @@ function basename(texPath: string): string {
   return i >= 0 ? texPath.slice(i + 1) : texPath
 }
 
-/** Resolve all texture paths from a textures field (string or array). */
+/** Resolve all texture paths from a textures field (string, { path } or array). */
 function resolveAllTexturePaths(texField: unknown): string[] {
   if (typeof texField === 'string') {
     return [texField.replace(/\.(png|tga)$/i, '')]
   }
-  if (!Array.isArray(texField)) return []
+  if (!Array.isArray(texField)) {
+    const single = resolveTexturePath(texField)
+    return single ? [single] : []
+  }
   const paths: string[] = []
   for (const el of texField) {
     if (typeof el === 'string') {
@@ -77,6 +88,16 @@ function rotationAliases(name: string): string[] {
   if (lastToFront !== name) aliases.push(lastToFront)
   if (firstToEnd !== name && firstToEnd !== lastToFront) aliases.push(firstToEnd)
   return aliases
+}
+
+/** Atlas key → image of its first variant, exactly as the game resolves it (no aliases) */
+function buildCanonicalMap(atlas: TextureAtlas | null): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const [shortName, entry] of Object.entries(atlas?.texture_data ?? {})) {
+    const path = resolveTexturePath(entry?.textures)
+    if (path) map.set(shortName, textureToPngUrl(path))
+  }
+  return map
 }
 
 function buildMapFromAtlas(atlas: TextureAtlas | null): Map<string, string> {
@@ -210,6 +231,8 @@ export async function loadVanillaTextureMap(): Promise<Map<string, string>> {
 
       // Track block names for isometric rendering
       vanillaBlockNamesCache = new Set(terrainMap.keys())
+      vanillaTerrainMapCache = buildCanonicalMap(terrainAtlas)
+      vanillaItemMapCache = buildCanonicalMap(itemAtlas)
       // Also add manual block aliases
       for (const [alias, target] of Object.entries(MANUAL_ALIASES)) {
         if (vanillaBlockNamesCache.has(target) || terrainMap.has(target)) {
@@ -217,7 +240,9 @@ export async function loadVanillaTextureMap(): Promise<Map<string, string>> {
         }
       }
 
-      vanillaTextureMapCache = combined
+      // A failed download (e.g. timeout) is retried by the next analysis instead of cached
+      if (itemAtlas && terrainAtlas) vanillaTextureMapCache = combined
+      else loadPromise = null
       return combined
     })()
   }
@@ -231,4 +256,20 @@ export async function loadVanillaTextureMap(): Promise<Map<string, string>> {
  */
 export function getVanillaBlockNames(): Set<string> {
   return vanillaBlockNamesCache ?? new Set()
+}
+
+/**
+ * Vanilla block textures by terrain_texture.json name.
+ * Must be called after loadVanillaTextureMap() resolves.
+ */
+export function getVanillaTerrainMap(): Map<string, string> {
+  return vanillaTerrainMapCache ?? new Map()
+}
+
+/**
+ * Vanilla item icons by item_texture.json name.
+ * Must be called after loadVanillaTextureMap() resolves.
+ */
+export function getVanillaItemMap(): Map<string, string> {
+  return vanillaItemMapCache ?? new Map()
 }

@@ -1,4 +1,5 @@
-import type { VirtualFS, ItemSpec, ItemStats, ReferenceLink } from '@/types'
+import { parseMenuCategory } from '@/analyzer/menu-category'
+import type { VirtualFS, ItemSpec, ItemStats, ReferenceLink, SpawnLink } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
 import { sanitizeDisplayName } from '@/analyzer/lang-parser'
 
@@ -72,13 +73,33 @@ function extractItem(root: Record<string, unknown>, sourcePath: string): ItemSpe
     id,
     title: desc.display_name ? sanitizeDisplayName(String(desc.display_name)) : undefined,
     sourcePath,
+    menuCategory: parseMenuCategory(desc),
     icon,
     tags: [],
     components,
     stats,
     references,
     diagnostics: [],
+    spawns: extractPlacerSpawns(components),
   }
+}
+
+/** minecraft:entity_placer / block_placer targets ("block" may be a name or { name, states }) */
+function extractPlacerSpawns(components: Record<string, unknown>): SpawnLink[] {
+  const spawns: SpawnLink[] = []
+  const entityPlacer = components['minecraft:entity_placer'] as Record<string, unknown> | undefined
+  if (entityPlacer && typeof entityPlacer.entity === 'string' && entityPlacer.entity) {
+    spawns.push({ kind: 'entity', target: entityPlacer.entity, source: 'component' })
+  }
+  const blockPlacer = components['minecraft:block_placer'] as Record<string, unknown> | undefined
+  const block = blockPlacer?.block
+  const blockId = typeof block === 'string' ? block
+    : block && typeof block === 'object' ? (block as Record<string, unknown>).name
+    : undefined
+  if (typeof blockId === 'string' && blockId) {
+    spawns.push({ kind: 'block', target: blockId, source: 'component' })
+  }
+  return spawns
 }
 
 function numVal(comp: unknown): number | undefined {
@@ -189,6 +210,7 @@ function createErrorItem(path: string, error: string): ItemSpec {
     components: {},
     stats: {},
     references: [],
+    spawns: [],
     diagnostics: [{
       level: 'warning' as const,
       code: 'json_parse_error',

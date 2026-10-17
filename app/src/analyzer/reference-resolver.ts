@@ -1,5 +1,6 @@
 import type { ItemSpec, BlockSpec, EntitySpec, RecipeSpec, VirtualFS, FileIndex, Diagnostic } from '@/types'
 import type { GeometryMap } from './geometry-parser'
+import { terrainTextureKey, type TextureMap } from './texture-extractor'
 
 /**
  * Resolve references between entities and check for broken references.
@@ -12,6 +13,7 @@ export function resolveReferences(
   files: VirtualFS,
   fileIndex: FileIndex,
   geometryMap?: GeometryMap,
+  textureMap?: TextureMap,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
 
@@ -22,7 +24,7 @@ export function resolveReferences(
   const animFiles = new Set(fileIndex.animations.map(f => f.toLowerCase()))
 
   // Helper to check if a reference target likely exists
-  const textureExists = (target: string): boolean => {
+  const textureFileExists = (target: string): boolean => {
     // Textures may be referenced by short name or partial path
     const lower = target.toLowerCase()
     for (const tex of textureFiles) {
@@ -30,6 +32,11 @@ export function resolveReferences(
     }
     return false
   }
+  // Item icons and entity textures: item atlas names and paths the UI can display
+  const textureExists = (target: string): boolean =>
+    !!textureMap?.has(target) || textureFileExists(target)
+  // Block textures: terrain atlas names only, the same rule the display uses (no file name guessing)
+  const blockTextureExists = (target: string): boolean => !!textureMap?.has(terrainTextureKey(target))
 
   const modelExists = (target: string): boolean => {
     // Check parsed geometry identifiers first (authoritative)
@@ -79,7 +86,7 @@ export function resolveReferences(
   for (const block of blocks) {
     for (const ref of block.references) {
       if (ref.kind === 'texture') {
-        ref.resolved = textureExists(ref.target)
+        ref.resolved = blockTextureExists(ref.target)
       } else if (ref.kind === 'geometry') {
         ref.resolved = modelExists(ref.target)
       }

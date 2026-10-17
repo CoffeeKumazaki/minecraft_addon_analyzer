@@ -1,67 +1,52 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource/space-grotesk/400.css";
-@import "@fontsource/space-grotesk/500.css";
-@import "@fontsource/space-grotesk/600.css";
-@import "@fontsource/space-grotesk/700.css";
-@import "@fontsource/inter/400.css";
-@import "@fontsource/inter/500.css";
+@import "@fontsource/m-plus-1-code/400.css";
+@import "@fontsource/m-plus-1-code/500.css";
+@import "@fontsource/m-plus-1-code/600.css";
+@import "@fontsource/m-plus-1-code/700.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/ibm-plex-mono/600.css";
 
 @custom-variant dark (&:is(.dark *));
 
+/* Blueprint theme (docs/design/addon-analyzer.pen, style "blueprint") */
 :root {
-  --background: #F5F0E8;
-  --foreground: #1A1A1A;
-  --card: #FFFFFF;
-  --card-foreground: #1A1A1A;
-  --popover: #FFFFFF;
-  --popover-foreground: #1A1A1A;
-  --primary: #1A1A1E;
-  --primary-foreground: #F5F0E8;
-  --secondary: #E8E4DD;
-  --secondary-foreground: #1A1A1A;
-  --muted: #E8E4DD;
-  --muted-foreground: #999999;
-  --accent: #D4A44C;
-  --accent-foreground: #F5F0E8;
-  --destructive: #C45A3B;
-  --destructive-foreground: #F5F0E8;
-  --success: #5B8C3E;
-  --border: #1A1A1A;
-  --border-light: #D4D0C8;
-  --input: #D4D0C8;
-  --ring: #D4A44C;
+  --background: #0D2742;
+  --foreground: #EAF4FF;
+  --card: #113052;
+  --card-foreground: #EAF4FF;
+  --popover: #113052;
+  --popover-foreground: #EAF4FF;
+  /* "Ink" color, used as text on accent fills (e.g. the selected world map dimension) */
+  --primary: #062238;
+  --primary-foreground: #EAF4FF;
+  --secondary: #173D66;
+  --secondary-foreground: #EAF4FF;
+  --muted: #173D66;
+  /* ≥ 5:1 on background, card and secondary (WCAG AA) */
+  --muted-foreground: #93B2D6;
+  --subtle: #A9C6E8;
+  --accent: #7FE3FF;
+  --accent-foreground: #062238;
+  --gold: #FFD27A;
+  --amethyst: #C3A6FF;
+  --destructive: #FF7A6B;
+  --destructive-foreground: #062238;
+  --success: #7FE3FF;
+  --border: #4A7BB0;
+  --border-light: #25507D;
+  --input: #25507D;
+  --ring: #7FE3FF;
   --radius: 0rem;
-  --chart-1: #D4A44C;
-  --chart-2: #5B8C3E;
-  --chart-3: #C45A3B;
-  --chart-4: #4A90D9;
-  --chart-5: #8B6DAF;
-}
-
-.dark {
-  --background: #1A1A1E;
-  --foreground: #F5F0E8;
-  --card: #2A2A30;
-  --card-foreground: #F5F0E8;
-  --popover: #2A2A30;
-  --popover-foreground: #F5F0E8;
-  --primary: #F5F0E8;
-  --primary-foreground: #1A1A1E;
-  --secondary: #333338;
-  --secondary-foreground: #F5F0E8;
-  --muted: #333338;
-  --muted-foreground: #999999;
-  --accent: #D4A44C;
-  --accent-foreground: #1A1A1E;
-  --destructive: #C45A3B;
-  --destructive-foreground: #F5F0E8;
-  --success: #5B8C3E;
-  --border: #F5F0E8;
-  --border-light: #444448;
-  --input: #444448;
-  --ring: #D4A44C;
+  --chart-1: #FFD27A;
+  --chart-2: #7FE3FF;
+  --chart-3: #FF7A6B;
+  --chart-4: #7FE3FF;
+  --chart-5: #C3A6FF;
+  --grid-minor: rgba(74, 123, 176, 0.12);
+  --grid-major: rgba(74, 123, 176, 0.25);
 }
 
 @theme {
@@ -77,8 +62,11 @@
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-subtle: var(--subtle);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-gold: var(--gold);
+  --color-amethyst: var(--amethyst);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
@@ -98,8 +86,9 @@
   --radius-2xl: 0rem;
   --radius-3xl: 0rem;
   --radius-4xl: 0rem;
-  --font-heading: 'Space Grotesk', sans-serif;
-  --font-sans: 'Inter', sans-serif;
+  --font-heading: 'M PLUS 1 Code', monospace;
+  --font-sans: 'M PLUS 1 Code', monospace;
+  --font-mono: 'IBM Plex Mono', 'M PLUS 1 Code', monospace;
 }
 
 @layer base {
@@ -107,17 +96,25 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
-    font-family: 'Inter', sans-serif;
+    @apply bg-background text-foreground font-sans;
+    /* Blueprint grid: 32px minor / 160px major lines */
+    background-image:
+      linear-gradient(var(--grid-major) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-major) 1px, transparent 1px),
+      linear-gradient(var(--grid-minor) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-minor) 1px, transparent 1px);
+    background-size: 160px 160px, 160px 160px, 32px 32px, 32px 32px;
+    background-attachment: fixed;
   }
 }
 
-/* Minecraft crafting UI */
-.mc-slot {
+/* Item slots (blueprint style) */
+.mc-slot,
+.mc-furnace-slot {
   width: 36px;
   height: 36px;
-  background: #8B8B8B;
-  box-shadow: inset -2px -2px 0 #555555, inset 2px 2px 0 #C6C6C6;
+  background: var(--background);
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -126,26 +123,14 @@
 .mc-slot-output {
   width: 44px;
   height: 44px;
-  background: #8B8B8B;
-  box-shadow: inset -2px -2px 0 #555555, inset 2px 2px 0 #C6C6C6;
+  background: var(--background);
+  border: 2px solid var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .mc-grid {
-  background: #C6C6C6;
-  padding: 4px;
-  gap: 2px;
+  gap: 3px;
   display: inline-grid;
-}
-
-.mc-furnace-slot {
-  width: 36px;
-  height: 36px;
-  background: #8B8B8B;
-  box-shadow: inset -2px -2px 0 #555555, inset 2px 2px 0 #C6C6C6;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }

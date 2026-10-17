@@ -11,12 +11,15 @@ import { analyzeLootTables } from './analyzers/loot-table-analyzer'
 import { analyzeSpawnRules } from './analyzers/spawn-rule-analyzer'
 import { analyzeTrades } from './analyzers/trade-analyzer'
 import { mergeClientEntities } from './analyzers/client-entity-merger'
+import { attachScriptSpawns } from './script-spawn-parser'
 import { applyEntityTags } from './tagging/entity-rules'
 import { applyItemTags } from './tagging/item-rules'
 import { applyBlockTags } from './tagging/block-rules'
 import { resolveReferences } from './reference-resolver'
+import { parseFlipbooks, attachFlipbooks } from './flipbook-parser'
 import { generateSummary } from './summary-generator'
-import { extractTextureMap, type TextureMap } from './texture-extractor'
+import { extractTextureMap, addVanillaFallbacks, type TextureMap, type DeclaredAtlasNames } from './texture-extractor'
+import { loadVanillaTextureMap, getVanillaItemMap, getVanillaTerrainMap } from '@/lib/vanilla-sprites'
 import { parseGeometries, type GeometryMap } from './geometry-parser'
 import { parseLangFiles, resolveDisplayName } from './lang-parser'
 
@@ -27,6 +30,9 @@ type ProgressCallback = (step: string, percent: number) => void
  * Takes a File or File[] and returns a complete AnalysisResult.
  * When multiple files are given, their VFS are merged before analysis.
  */
+/** Longest the analysis waits for the vanilla texture atlases */
+const VANILLA_WAIT_MS = 15_000
+
 export async function analyzeAddon(
   inputFiles: File | File[],
   onProgress?: ProgressCallback,
@@ -205,6 +211,9 @@ export async function analyzeAddon(
   onProgress?.('クライアントエンティティを統合中...', 73)
   mergeClientEntities(files, fileIndex.clientEntities, entities)
 
+  // Step 5e: Items that spawn entities / place blocks from scripts instead of placer components
+  attachScriptSpawns(files, fileIndex.scripts, items, entities.map(e => e.id), blocks.map(b => b.id))
+
   // Step 6: Apply behavior tags
   onProgress?.('挙動タグを付与中...', 75)
   for (const item of items) {
@@ -223,14 +232,20 @@ export async function analyzeAddon(
 
   // Step 7: Extract textures and parse geometries
   onProgress?.('テクスチャを抽出中...', 80)
-  const textureMap = extractTextureMap(files, packPaths)
+  const declaredAtlasNames: DeclaredAtlasNames = { item: new Set(), terrain: new Set() }
+  const textureMap = extractTextureMap(files, packPaths, declaredAtlasNames)
+  // Vanilla textures referenced by name (e.g. "stone") display and resolve like add-on ones.
+  // Bounded wait: if the download stalls, analysis continues without vanilla fallbacks
+  await Promise.race([loadVanillaTextureMap(), new Promise(resolve => setTimeout(resolve, VANILLA_WAIT_MS))])
+  addVanillaFallbacks(textureMap, declaredAtlasNames, getVanillaItemMap(), getVanillaTerrainMap())
+  attachFlipbooks(blocks, parseFlipbooks(files, packPaths))
 
   onProgress?.('ジオメトリを解析中...', 83)
   const geometryMap = parseGeometries(files, fileIndex.models)
 
   // Step 8: Resolve references (using parsed geometryMap for accurate resolution)
   onProgress?.('参照を解決中...', 87)
-  const refDiags = resolveReferences(items, blocks, entities, recipes, files, fileIndex, geometryMap)
+  const refDiags = resolveReferences(items, blocks, entities, recipes, files, fileIndex, geometryMap, textureMap)
   allDiagnostics.push(...refDiags)
 
   // Collect diagnostics from all specs

@@ -47,11 +47,18 @@ function tintLayer(
 
 // Cache loaded images
 const imgCache = new Map<string, HTMLImageElement>()
+/** Vanilla textures come from GitHub; CORS mode keeps their pixels readable for sampling */
+function newImage(): HTMLImageElement {
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  return img
+}
+
 function loadImg(src: string): Promise<HTMLImageElement> {
   const cached = imgCache.get(src)
   if (cached) return Promise.resolve(cached)
   return new Promise((resolve) => {
-    const img = new Image()
+    const img = newImage()
     img.onload = () => { imgCache.set(src, img); resolve(img) }
     img.src = src
   })
@@ -91,7 +98,8 @@ export function SpawnEggThumbnail({ baseColor, overlayColor, size = 32 }: { base
   )
 }
 
-export function TextureThumbnail({ src, size = 32 }: { src?: string; size?: number }) {
+/** `firstFrame`: the image is a flipbook strip; show only its top frame */
+export function TextureThumbnail({ src, size = 32, firstFrame = false }: { src?: string; size?: number; firstFrame?: boolean }) {
   if (!src) {
     return (
       <div
@@ -105,32 +113,46 @@ export function TextureThumbnail({ src, size = 32 }: { src?: string; size?: numb
       src={src}
       alt=""
       className="flex-shrink-0 rounded"
-      style={{ width: size, height: size, imageRendering: 'pixelated' }}
+      style={{ width: size, height: size, imageRendering: 'pixelated', ...(firstFrame ? { objectFit: 'cover', objectPosition: 'top' } : {}) }}
     />
   )
 }
 
-export function BlockThumbnail({ src, faceSrc, geometry, size = 40 }: { src?: string; faceSrc?: BlockFaceSources; geometry?: GeometryDef; size?: number }) {
+type BlockThumbnailProps = {
+  src?: string
+  faceSrc?: BlockFaceSources
+  geometry?: GeometryDef
+  size?: number
+  /** Image URLs known to be flipbook strips; only their first frame is drawn */
+  stripSrcs?: string[]
+  /** Treat any image taller than wide as a strip (vanilla blocks, whose static textures are square) */
+  tallIsStrip?: boolean
+}
+
+export function BlockThumbnail({ src, faceSrc, geometry, size = 40, stripSrcs, tallIsStrip = false }: BlockThumbnailProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const stripKey = stripSrcs?.join('\n') ?? ''
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !src) return
     let cancelled = false
 
+    const known = new Set(stripKey ? stripKey.split('\n') : [])
+    const isStrip = (url: string, img: HTMLImageElement) => known.has(url) || (tallIsStrip && img.height > img.width)
     const dpr = window.devicePixelRatio || 1
     const res = Math.round(size * dpr)
     canvas.width = res
     canvas.height = res
 
     if (geometry && geometry.cubes.length > 0) {
-      const img = new Image()
+      const img = newImage()
       img.onload = () => {
         if (cancelled) return
         const ctx = canvas.getContext('2d')!
         ctx.clearRect(0, 0, res, res)
         ctx.imageSmoothingEnabled = false
-        renderCustomGeometry(ctx, img, geometry, res)
+        renderCustomGeometry(ctx, img, geometry, res, isStrip(src, img))
       }
       img.src = src
     } else if (faceSrc && (faceSrc.top || faceSrc.left || faceSrc.right)) {
@@ -146,22 +168,23 @@ export function BlockThumbnail({ src, faceSrc, geometry, size = 40 }: { src?: st
         const ctx = canvas.getContext('2d')!
         ctx.clearRect(0, 0, res, res)
         ctx.imageSmoothingEnabled = false
-        renderDefaultCubePerFace(ctx, urlToImg.get(urls.top)!, urlToImg.get(urls.left)!, urlToImg.get(urls.right)!, res)
+        const top = urlToImg.get(urls.top)!, left = urlToImg.get(urls.left)!, right = urlToImg.get(urls.right)!
+        renderDefaultCubePerFace(ctx, top, left, right, res, [isStrip(urls.top, top), isStrip(urls.left, left), isStrip(urls.right, right)])
       })
     } else {
-      const img = new Image()
+      const img = newImage()
       img.onload = () => {
         if (cancelled) return
         const ctx = canvas.getContext('2d')!
         ctx.clearRect(0, 0, res, res)
         ctx.imageSmoothingEnabled = false
-        renderDefaultCube(ctx, img, res)
+        renderDefaultCube(ctx, img, res, isStrip(src, img))
       }
       img.src = src
     }
 
     return () => { cancelled = true }
-  }, [src, faceSrc?.top, faceSrc?.left, faceSrc?.right, geometry, size])
+  }, [src, faceSrc?.top, faceSrc?.left, faceSrc?.right, geometry, size, stripKey, tallIsStrip])
 
   if (!src) {
     return (
@@ -186,11 +209,14 @@ const SIN30 = Math.sin(Math.PI / 6)
 
 type UVRect = { su: number; sv: number; sw: number; sh: number }
 
+/** Whole texture, or only the first (top, square) frame when the image is a known flipbook strip */
+function faceUV(img: HTMLImageElement, strip: boolean): UVRect {
+  return { su: 0, sv: 0, sw: img.width, sh: strip ? Math.min(img.width, img.height) : img.height }
+}
+
 /** Render standard isometric cube (no geometry — uses full texture per face) */
-function renderDefaultCube(ctx: CanvasRenderingContext2D, img: HTMLImageElement, size: number) {
-  const w = img.width
-  const h = img.height
-  const fullUV: UVRect = { su: 0, sv: 0, sw: w, sh: h }
+function renderDefaultCube(ctx: CanvasRenderingContext2D, img: HTMLImageElement, size: number, strip: boolean) {
+  const fullUV = faceUV(img, strip)
   const s = size * 0.42
   const cx = size / 2
   const xStep = s * COS30
@@ -217,6 +243,7 @@ function renderDefaultCubePerFace(
   leftImg: HTMLImageElement,
   rightImg: HTMLImageElement,
   size: number,
+  [topStrip, leftStrip, rightStrip]: [boolean, boolean, boolean],
 ) {
   const s = size * 0.42
   const cx = size / 2
@@ -231,11 +258,10 @@ function renderDefaultCubePerFace(
   const bottomLeft = { x: cx - xStep, y: topLeft.y + sideH }
   const bottom = { x: cx, y: center.y + sideH }
 
-  const fullUV = (img: HTMLImageElement): UVRect => ({ su: 0, sv: 0, sw: img.width, sh: img.height })
 
-  drawFace(ctx, topImg,   center,  topLeft,  topRight,   1.0,  fullUV(topImg))
-  drawFace(ctx, leftImg,  topLeft, center,   bottomLeft, 0.7,  fullUV(leftImg))
-  drawFace(ctx, rightImg, center,  topRight, bottom,     0.55, fullUV(rightImg))
+  drawFace(ctx, topImg,   center,  topLeft,  topRight,   1.0,  faceUV(topImg, topStrip))
+  drawFace(ctx, leftImg,  topLeft, center,   bottomLeft, 0.7,  faceUV(leftImg, leftStrip))
+  drawFace(ctx, rightImg, center,  topRight, bottom,     0.55, faceUV(rightImg, rightStrip))
 }
 
 type Point = { x: number; y: number }
@@ -294,6 +320,7 @@ function renderCustomGeometry(
   img: HTMLImageElement,
   geometry: GeometryDef,
   size: number,
+  strip: boolean,
 ) {
   const faces = computeWorldFaces(geometry)
   const texels = readTexels(img)
@@ -301,7 +328,9 @@ function renderCustomGeometry(
 
   // Scale UV from geometry texture space to actual image pixels
   const scaleU = geometry.textureWidth ? texels.width / geometry.textureWidth : 1
-  const scaleV = geometry.textureHeight ? texels.height / geometry.textureHeight : 1
+  // A flipbook strip stacks square frames; UV space covers only the first (top) one
+  const frameHeight = strip ? Math.min(texels.width, texels.height) : texels.height
+  const scaleV = geometry.textureHeight ? frameHeight / geometry.textureHeight : 1
 
   const projected = faces.map(f => ({
     face: f,

@@ -1,5 +1,6 @@
 import { useCallback, useState, useRef } from 'react'
 import { useAnalysisContext } from '@/context/analysis-context'
+import { useLanguage } from '@/context/language-context'
 import { analyzeAddon } from '@/analyzer'
 import { Plus, Loader2 } from 'lucide-react'
 import type { PackType } from '@/types'
@@ -22,16 +23,17 @@ type Props = {
 
 export function AddPackUpload({ missingTypes }: Props) {
   const { state, dispatch } = useAnalysisContext()
+  const { t } = useLanguage()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const missingLabel = missingTypes.map(t => PACK_LABELS[t]).join(' / ')
+  const missingLabel = missingTypes.map(type => PACK_LABELS[type]).join(' / ')
 
   const handleFile = useCallback(async (file: File) => {
     if (!isAcceptedFile(file)) {
-      setError('Unsupported file format.')
+      setError(t('upload.unsupported'))
       return
     }
 
@@ -43,11 +45,11 @@ export function AddPackUpload({ missingTypes }: Props) {
       const { result, textureMap, geometryMap } = await analyzeAddon(allFiles)
       dispatch({ type: 'SET_RESULT', result, textureMap, geometryMap, files: allFiles })
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Analysis failed')
+      setError(e instanceof Error ? e.message : t('upload.failed'))
     } finally {
       setIsLoading(false)
     }
-  }, [state.files, dispatch])
+  }, [state.files, dispatch, t])
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -67,6 +69,8 @@ export function AddPackUpload({ missingTypes }: Props) {
 
   const onFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+    // Allow picking the same file again after an error
+    e.target.value = ''
     if (file) handleFile(file)
   }, [handleFile])
 
@@ -77,22 +81,20 @@ export function AddPackUpload({ missingTypes }: Props) {
       onDragLeave={onDragLeave}
       onClick={() => !isLoading && inputRef.current?.click()}
       className={`
-        border-2 border-dashed p-4 text-center cursor-pointer transition-colors
-        ${isDragOver ? 'border-accent bg-accent/5' : 'border-border-light hover:border-accent/50'}
+        border px-3.5 py-3 cursor-pointer transition-colors
+        ${isDragOver ? 'border-accent bg-secondary' : 'border-border hover:border-accent'}
         ${isLoading ? 'pointer-events-none opacity-60' : ''}
       `}
     >
       {isLoading ? (
-        <div className="flex items-center justify-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Merging analysis...</p>
+        <div className="flex items-center gap-2.5">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-subtle" />
+          <p className="text-[13px] text-subtle">{t('sidebar.merging')}</p>
         </div>
       ) : (
-        <div className="flex items-center justify-center gap-2">
-          <Plus className="h-4 w-4 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            Drop or click to add {missingLabel}
-          </p>
+        <div className="flex items-center gap-2.5">
+          <Plus className="h-3.5 w-3.5 shrink-0 text-subtle" />
+          <p className="text-[13px] text-subtle">{t('sidebar.addPack', { packs: missingLabel })}</p>
         </div>
       )}
       <input

@@ -1,19 +1,22 @@
-import { Badge } from '@/components/ui/badge'
-import { SectionCard } from './shared/section-card'
+import { useState } from 'react'
+import { Pickaxe, Sun, Flame, Map as MapIcon, Hammer, MousePointerClick } from 'lucide-react'
+import { ReferenceList } from './shared/reference-list'
 import { BlockThumbnail, TextureThumbnail } from './shared/thumbnails'
-import { RecipeCard } from './shared/recipe-diagrams'
 import { LazyModelViewer } from './shared/lazy-model-viewer'
-import {
-  ChefHat, ArrowRightFromLine, Package, Box,
-  Pickaxe, Shield, Sun, SunDim, Snowflake, Flame, Hammer, MousePointerClick, Footprints,
-} from 'lucide-react'
+import { DetailHeader, SummaryLine, DetailTabBar, DetailTabPanel, IssueList, Section, PropertyGroups, ComponentsTable, EmptyNote, type PropertyGroup } from './shared/detail-layout'
+import { RecipeCards } from './shared/recipe-diagrams'
+import { SpawningItems } from './shared/spawn-links'
+import { itemsSpawning } from '@/lib/spawn-links'
+import { TagChip } from '@/components/workspace/tag-chip'
+import { blockThumbnailProps, blockTextureUrl } from '@/lib/thumbnail-sources'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
-import type { BlockSpec, BlockStats, LootTableSpec, ItemSpec } from '@/types'
+import type { BlockSpec, BlockStats, ItemSpec, LootTableSpec } from '@/types'
 import { useLanguage } from '@/context/language-context'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap } from '@/analyzer/geometry-parser'
 import type { BlockRenderMap } from '@/hooks/use-recipe-lookup'
-import type { CubeFaceTextures } from './shared/model-viewer'
+import type { CubeFaceTextures, BoundsBox } from './shared/model-viewer'
+import type { Vec3 } from '@/analyzer/geometry-parser'
 import { BOX_FACES, SIDE_FACES } from '@/lib/bedrock-geometry'
 
 /** View blocks from the north-west like the isometric thumbnails (north bottom-left, west bottom-right) */
@@ -23,11 +26,11 @@ const BLOCK_CAMERA_DIRECTION: [number, number, number] = [-1, 0.8, -1]
 function resolveCubeFaces(block: BlockSpec, textureMap: TextureMap | null): CubeFaceTextures | undefined {
   if (!textureMap) return undefined
   const ft = block.faceTextures ?? {}
-  const fallback = block.textures.map(t => textureMap.get(t)).find(s => s != null)
+  const fallback = block.textures.map(t => blockTextureUrl(block, t, textureMap)).find(s => s != null)
   const faces: CubeFaceTextures = {}
   for (const face of BOX_FACES) {
     const name = ft[face] ?? (SIDE_FACES.has(face) ? ft.sides : undefined) ?? ft['*']
-    const src = (name ? textureMap.get(name) : undefined) ?? fallback
+    const src = (name ? blockTextureUrl(block, name, textureMap) : undefined) ?? fallback
     if (src) faces[face] = src
   }
   return Object.keys(faces).length > 0 ? faces : undefined
@@ -38,18 +41,152 @@ function resolveMaterialTextures(block: BlockSpec, textureMap: TextureMap | null
   if (!textureMap || !block.faceTextures) return undefined
   const result: Record<string, string> = {}
   for (const [name, tex] of Object.entries(block.faceTextures)) {
-    const src = textureMap.get(tex)
+    const src = blockTextureUrl(block, tex, textureMap)
     if (src) result[name] = src
   }
   return result
 }
 
-function hasAnyBlockStats(stats: BlockStats): boolean {
-  return stats.miningTime != null || stats.blastResistance != null
-    || stats.lightEmission != null || stats.lightDampening != null
-    || stats.friction != null || stats.flammable != null
-    || stats.mapColor != null || stats.craftingTable != null
-    || stats.onInteract != null || stats.onStepOn != null || stats.onStepOff != null
+const FULL_BLOCK_BOX = { origin: [-8, 0, -8] as Vec3, size: [16, 16, 16] as Vec3 }
+
+function isVec3(value: unknown): value is Vec3 {
+  return Array.isArray(value) && value.length === 3 && value.every(n => typeof n === 'number' && Number.isFinite(n))
+}
+
+/** One box value: true is the full block; omitted origin / size take the full-block defaults */
+function parseBox(value: unknown): { origin: Vec3; size: Vec3 } | null {
+  if (value === true) return FULL_BLOCK_BOX
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const { origin = FULL_BLOCK_BOX.origin, size = FULL_BLOCK_BOX.size } = value as Record<string, unknown>
+  if (!isVec3(origin) || !isVec3(size) || size.some(s => s <= 0)) return null
+  return { origin, size }
+}
+
+/**
+ * minecraft:collision_box / selection_box as outlines; false or absent draws nothing.
+ * collision_box may also be a list of boxes.
+ */
+function blockBoxes(components: Record<string, unknown>, t: (key: string) => string): BoundsBox[] {
+  const kinds = [['collision', 'minecraft:collision_box'], ['selection', 'minecraft:selection_box']] as const
+  return kinds.flatMap(([kind, component]) => {
+    const value = components[component]
+    return (Array.isArray(value) ? value : [value]).flatMap(v => {
+      const box = parseBox(v)
+      return box ? [{ kind, label: t(`box.${kind}`), ...box }] : []
+    })
+  })
+}
+
+function blockPropertyGroups(stats: BlockStats, t: (key: string) => string): PropertyGroup[] {
+  const groups: PropertyGroup[] = []
+  const physics = [
+    stats.miningTime != null && { label: t('prop.miningTime'), value: `${stats.miningTime} s` },
+    stats.blastResistance != null && { label: t('prop.blast'), value: stats.blastResistance },
+    stats.friction != null && { label: t('prop.friction'), value: stats.friction },
+  ].filter(Boolean) as PropertyGroup['rows']
+  if (physics.length) groups.push({ key: 'physics', title: t('prop.physics'), icon: Pickaxe, rows: physics })
+
+  const light = [
+    stats.lightEmission != null && { label: t('prop.emission'), value: stats.lightEmission },
+    stats.lightDampening != null && { label: t('prop.dampening'), value: stats.lightDampening },
+  ].filter(Boolean) as PropertyGroup['rows']
+  if (light.length) {
+    groups.push({ key: 'light', title: t('prop.light'), icon: Sun, iconClass: 'text-gold', rows: light })
+  }
+
+  if (stats.flammable != null) {
+    const f = stats.flammable
+    groups.push({
+      key: 'flammable', title: t('prop.flammable'), icon: Flame, iconClass: 'text-destructive',
+      rows: typeof f === 'boolean'
+        ? [{ label: t('prop.flammable'), value: f ? t('prop.yes') : t('prop.no') }]
+        : [{ label: t('prop.catchChance'), value: f.catchChance }, { label: t('prop.destroyChance'), value: f.destroyChance }],
+    })
+  }
+  if (stats.mapColor) {
+    groups.push({
+      key: 'map', title: t('prop.map'), icon: MapIcon, iconClass: 'text-accent',
+      rows: [
+        {
+          label: t('prop.mapColor'),
+          value: (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="size-2.5 border border-border" style={{ backgroundColor: stats.mapColor }} />
+              {stats.mapColor}
+            </span>
+          ),
+        },
+        ...(stats.mapTintMethod ? [{ label: t('prop.tint'), value: stats.mapTintMethod }] : []),
+      ],
+    })
+  }
+  const events = [
+    stats.onInteract != null && { label: t('prop.onInteract'), value: stats.onInteract },
+    stats.onStepOn != null && { label: t('prop.onStepOn'), value: stats.onStepOn },
+    stats.onStepOff != null && { label: t('prop.onStepOff'), value: stats.onStepOff },
+  ].filter(Boolean) as PropertyGroup['rows']
+  if (events.length) groups.push({ key: 'events', title: t('prop.events'), icon: MousePointerClick, iconClass: 'text-accent', rows: events })
+  if (stats.craftingTable) {
+    groups.push({ key: 'table', title: t('prop.table'), icon: Hammer, iconClass: 'text-gold', rows: [{ label: t('prop.tableName'), value: stats.craftingTable.tableName }] })
+  }
+  return groups
+}
+
+function formatPercent(value: number): string {
+  const pct = value * 100
+  if (pct >= 100) return '100%'
+  if (pct >= 10) return `${Math.round(pct)}%`
+  if (pct >= 1) return `${pct.toFixed(1)}%`
+  return `${pct.toFixed(2)}%`
+}
+
+const formatRange = (min: number, max: number) => (min === max ? `${min}` : `${min}–${max}`)
+
+function humanizeId(id: string): string {
+  return id.replace(/^[^:]+:/, '').split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+}
+
+/** Loot table referenced by minecraft:loot, matched by its path */
+function findLootTable(ref: string, lootTables: LootTableSpec[]): LootTableSpec | undefined {
+  const refNorm = ref.replace(/\\/g, '/')
+  return lootTables.find(lt => lt.sourcePath.replace(/\\/g, '/').endsWith(refNorm) || lt.sourcePath.includes(refNorm))
+}
+
+function BlockDrops({ lootTable, items, textureMap }: { lootTable: LootTableSpec; items: ItemSpec[]; textureMap: TextureMap | null }) {
+  const { t } = useLanguage()
+  const icons = new Map(items.filter(i => i.icon).map(i => [i.id, i.icon!]))
+  return (
+    <Section title={t('section.drops')} count={lootTable.pools.reduce((n, p) => n + p.drops.length, 0)}>
+      <p className="font-mono text-[10px] text-muted-foreground break-all">{lootTable.sourcePath}</p>
+      {lootTable.pools.map((pool, pi) => (
+        <div key={pi} className="space-y-1.5">
+          <p className="font-mono text-[10px] text-muted-foreground">
+            POOL {pi + 1} · {t('drops.rolls', { n: formatRange(pool.rollsMin, pool.rollsMax) })}
+            {pool.conditions.length > 0 && ` · ${pool.conditions.join(', ')}`}
+          </p>
+          {pool.drops.length > 0 ? (
+            <div className="border-t border-border-light">
+              {pool.drops.map((drop, di) => {
+                const icon = icons.get(drop.item)
+                return (
+                  <div key={di} className="flex items-center gap-2.5 border-b border-border-light py-1.5">
+                    <span className="size-6 shrink-0 flex items-center justify-center border border-border bg-background">
+                      <TextureThumbnail src={icon ? textureMap?.get(icon) : undefined} size={18} />
+                    </span>
+                    <span className="flex-1 truncate text-xs" title={drop.item}>{drop.title ?? humanizeId(drop.item)}</span>
+                    <span className="w-14 text-right font-mono text-xs text-accent">{formatPercent(drop.chance)}</span>
+                    <span className="w-12 text-right font-mono text-xs text-muted-foreground">×{formatRange(drop.countMin, drop.countMax)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t('drops.none')}</p>
+          )}
+        </div>
+      ))}
+    </Section>
+  )
 }
 
 type Props = {
@@ -63,44 +200,9 @@ type Props = {
   items?: ItemSpec[]
 }
 
-function StatPill({ icon: Icon, iconColor, label, value }: { icon: React.ElementType; iconColor: string; label: string; value: string | number }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 bg-secondary px-2.5 py-1">
-      <Icon className={`h-3 w-3 ${iconColor}`} />
-      <span className="font-heading text-[11px] font-semibold text-foreground">{label} {value}</span>
-    </span>
-  )
-}
-
-function MapColorPill({ color }: { color: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 bg-secondary px-2.5 py-1">
-      <span className="inline-block w-3 h-3 border border-border" style={{ backgroundColor: color }} />
-      <span className="font-heading text-[11px] font-semibold text-foreground">MAP {color}</span>
-    </span>
-  )
-}
-
-function formatPercent(value: number): string {
-  const pct = value * 100
-  if (pct >= 100) return '100%'
-  if (pct >= 10) return `${Math.round(pct)}%`
-  if (pct >= 1) return `${pct.toFixed(1)}%`
-  return `${pct.toFixed(2)}%`
-}
-
-function formatCount(min: number, max: number): string {
-  if (min === max) return `${min}`
-  return `${min}–${max}`
-}
-
-function humanizeId(id: string): string {
-  const stripped = id.replace(/^(?:minecraft:|[^:]+:)/, '')
-  return stripped.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-}
-
 export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMap, geometryMap, recipeLookup, lootTables, items }: Props) {
   const { t } = useLanguage()
+  const [tab, setTab] = useState('overview')
   const geoRef = block.references.find(r => r.kind === 'geometry')
   const geometry = geoRef ? geometryMap?.get(geoRef.target) : undefined
   const obtainRecipes = recipeLookup ? lookupRecipesForId(recipeLookup, block.id, 'output') : []
@@ -108,158 +210,99 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
   const cubeFaces = geometry ? undefined : resolveCubeFaces(block, textureMap)
   const materialTextures = geometry ? resolveMaterialTextures(block, textureMap) : undefined
   // Prefer the "*" material as the default; otherwise any resolvable texture
-  const viewerTexture = materialTextures?.['*'] ?? block.textures.map(t => textureMap?.get(t)).find(s => s != null)
+  const viewerTexture = materialTextures?.['*'] ?? block.textures.map(t => blockTextureUrl(block, t, textureMap)).find(s => s != null)
+  // Animated textures, keyed by the URL the viewer loads
+  const flipbooks = block.flipbooks && textureMap
+    ? Object.fromEntries(Object.entries(block.flipbooks).flatMap(([name, info]) => {
+        const url = blockTextureUrl(block, name, textureMap)
+        return url ? [[url, info]] : []
+      }))
+    : undefined
+  const issueCount = block.diagnostics.length + block.references.filter(r => !r.resolved).length
+  const groups = blockPropertyGroups(block.stats, t)
+  const lootTable = block.lootTable && lootTables ? findLootTable(block.lootTable, lootTables) : undefined
+  const hasModel = (geometry && geometry.cubes.length > 0) || cubeFaces
+  const boxes = blockBoxes(block.components, t)
+  const spawners = itemsSpawning(items ?? [], 'block', block.id)
+  // The same texture can back several faces or permutations
+  const textureNames = [...new Set(block.textures)]
 
   return (
-    <div className="space-y-5">
-      {/* Unified header card */}
-      <div className="border-2 border-border bg-card p-5">
-        <div className="flex items-start gap-4">
-          <BlockThumbnail
-            src={block.textures.map(t => textureMap?.get(t)).find(s => s != null)}
-            faceSrc={block.faceTextures ? (() => {
-              const ft = block.faceTextures!
-              const fb = ft['*']
-              const r = (f: string) => { const n = ft[f] ?? fb; return n ? textureMap?.get(n) : undefined }
-              return { top: r('up'), left: r('north'), right: r('west') }
-            })() : undefined}
-            geometry={geometry}
-            size={48}
-          />
-          <div className="flex-1 min-w-0 space-y-1.5">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="font-heading text-xl font-bold tracking-[-1px]">{block.title ?? block.id}</h2>
-              {block.tags.map(tag => (
-                <Badge key={tag} variant="secondary" className="font-heading text-[8px] font-semibold tracking-[1px] rounded-none py-0">{t(tag).toUpperCase()}</Badge>
-              ))}
-            </div>
-            <p className="text-[11px] text-muted-foreground font-mono">{block.id}</p>
-            {hasAnyBlockStats(block.stats) && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {block.stats.miningTime != null && <StatPill icon={Pickaxe} iconColor="text-muted-foreground" label="MINE" value={`${block.stats.miningTime}s`} />}
-                {block.stats.blastResistance != null && <StatPill icon={Shield} iconColor="text-chart-4" label="BLAST" value={block.stats.blastResistance} />}
-                {block.stats.lightEmission != null && <StatPill icon={Sun} iconColor="text-accent" label="LIGHT" value={block.stats.lightEmission} />}
-                {block.stats.lightDampening != null && <StatPill icon={SunDim} iconColor="text-muted-foreground" label="DAMP" value={block.stats.lightDampening} />}
-                {block.stats.friction != null && <StatPill icon={Snowflake} iconColor="text-chart-4" label="FRIC" value={block.stats.friction} />}
-                {block.stats.flammable != null && <StatPill icon={Flame} iconColor="text-chart-1" label="BURN" value={typeof block.stats.flammable === 'boolean' ? (block.stats.flammable ? 'Yes' : 'No') : `${block.stats.flammable.catchChance}/${block.stats.flammable.destroyChance}`} />}
-                {block.stats.mapColor != null && <MapColorPill color={block.stats.mapColor} />}
-                {block.stats.craftingTable != null && <StatPill icon={Hammer} iconColor="text-accent" label="TABLE" value={block.stats.craftingTable.tableName} />}
-                {block.stats.onInteract != null && <StatPill icon={MousePointerClick} iconColor="text-chart-4" label="INTERACT" value={block.stats.onInteract} />}
-                {block.stats.onStepOn != null && <StatPill icon={Footprints} iconColor="text-chart-4" label="STEP ON" value={block.stats.onStepOn} />}
-                {block.stats.onStepOff != null && <StatPill icon={Footprints} iconColor="text-muted-foreground" label="STEP OFF" value={block.stats.onStepOff} />}
-              </div>
+    <div className="pb-8">
+      <DetailHeader
+        crumb={`BLOCK / ${block.id}`}
+        closeTo="/results/blocks"
+        thumbnail={<BlockThumbnail {...blockThumbnailProps(block, textureMap, geometryMap)} size={44} />}
+        title={block.title ?? block.id}
+        path={block.sourcePath}
+      >
+        <SummaryLine menuCategory={block.menuCategory} obtainCount={obtainRecipes.length} usedInCount={usedInRecipes.length} issueCount={issueCount} onShowIssues={() => setTab('issues')} />
+        {block.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">{block.tags.map(tag => <TagChip key={tag} tag={tag} className="bg-secondary px-2 py-1 text-xs" />)}</div>
+        )}
+        <DetailTabBar
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { key: 'overview', label: t('tab.overview') },
+            { key: 'obtain', label: t('tab.obtain'), count: obtainRecipes.length },
+            { key: 'usedIn', label: t('tab.usedIn'), count: usedInRecipes.length },
+            { key: 'references', label: t('tab.references'), count: block.references.length },
+            { key: 'components', label: t('tab.components'), count: Object.keys(block.components).length },
+            ...(issueCount > 0 ? [{ key: 'issues', label: t('tab.issues'), count: issueCount }] : []),
+          ]}
+        />
+      </DetailHeader>
+
+      <DetailTabPanel tab={tab}>
+        {tab === 'overview' && (
+          <>
+            {hasModel && (
+              geometry
+                ? <LazyModelViewer key={block.id} geometry={geometry} textureSrc={viewerTexture} materialTextures={materialTextures} cameraDirection={BLOCK_CAMERA_DIRECTION} flipbooks={flipbooks} boxes={boxes} />
+                : <LazyModelViewer key={block.id} cubeFaces={cubeFaces!} cameraDirection={BLOCK_CAMERA_DIRECTION} flipbooks={flipbooks} boxes={boxes} />
             )}
-          </div>
-        </div>
-      </div>
-
-      {/* 3D Model */}
-      {((geometry && geometry.cubes.length > 0) || cubeFaces) && (
-        <SectionCard title="3D Model" icon={Box}>
-          {geometry
-            ? <LazyModelViewer key={block.id} geometry={geometry} textureSrc={viewerTexture} materialTextures={materialTextures} cameraDirection={BLOCK_CAMERA_DIRECTION} />
-            : <LazyModelViewer key={block.id} cubeFaces={cubeFaces!} cameraDirection={BLOCK_CAMERA_DIRECTION} />}
-        </SectionCard>
-      )}
-
-      {/* Block Drops */}
-      {block.lootTable && lootTables && lootTables.length > 0 && (() => {
-        const matched = lootTables.find(lt => {
-          const refNorm = block.lootTable!.replace(/\\/g, '/')
-          const srcNorm = lt.sourcePath.replace(/\\/g, '/')
-          return srcNorm.includes(refNorm) || srcNorm.endsWith(refNorm)
-        })
-        if (!matched) return null
-        const iconMap = new Map<string, string>()
-        if (items) {
-          for (const item of items) {
-            if (item.icon) iconMap.set(item.id, item.icon)
-          }
-        }
-        return (
-          <SectionCard title="Block Drops" icon={Package}>
-            {matched.pools.map((pool, pi) => (
-              <div key={pi} className="mb-3">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span className="font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground">
-                    POOL {pi + 1}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    Rolls: {formatCount(pool.rollsMin, pool.rollsMax)}
-                  </span>
-                  {pool.conditions.length > 0 && (
-                    <span className="text-[10px] text-muted-foreground italic">
-                      ({pool.conditions.join(', ')})
-                    </span>
-                  )}
+            <PropertyGroups groups={groups} />
+            {spawners.length > 0 && (
+              <Section title={t('section.spawnedBy')} count={spawners.length}>
+                <SpawningItems spawners={spawners} textureMap={textureMap} />
+              </Section>
+            )}
+            {lootTable && <BlockDrops lootTable={lootTable} items={items ?? []} textureMap={textureMap} />}
+            {textureNames.length > 0 && (
+              <Section title={t('section.textures')} count={textureNames.length}>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-2">
+                  {textureNames.map(tex => {
+                    const src = blockTextureUrl(block, tex, textureMap)
+                    return (
+                      <div key={tex} className="flex flex-col items-center gap-1.5">
+                        <span className={`w-full aspect-square flex items-center justify-center border ${src ? 'border-border bg-background' : 'border-destructive'}`}>
+                          <TextureThumbnail src={src} size={40} firstFrame={block.flipbooks?.[tex] != null} />
+                        </span>
+                        <span className={`font-mono text-[10px] text-center break-all ${src ? 'text-muted-foreground' : 'text-destructive'}`}>{tex}</span>
+                      </div>
+                    )
+                  })}
                 </div>
-                {pool.drops.length > 0 ? (
-                  <div className="border border-border-light">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border-light bg-secondary/50">
-                          <th className="text-left px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground">ITEM</th>
-                          <th className="text-right px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground w-20">CHANCE</th>
-                          <th className="text-right px-3 py-1.5 font-heading text-[10px] font-semibold tracking-[1px] text-muted-foreground w-20">COUNT</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pool.drops.map((drop, di) => {
-                          const icon = iconMap.get(drop.item)
-                          const texSrc = icon ? textureMap?.get(icon) : undefined
-                          return (
-                            <tr key={di} className="border-b border-border-light last:border-b-0">
-                              <td className="px-3 py-1.5">
-                                <div className="flex items-center gap-2">
-                                  <TextureThumbnail src={texSrc} size={20} />
-                                  <span className="text-xs">{drop.title ?? humanizeId(drop.item)}</span>
-                                </div>
-                              </td>
-                              <td className="px-3 py-1.5 text-right">
-                                <span className={`font-heading text-xs font-semibold ${drop.chance >= 0.5 ? 'text-success' : drop.chance >= 0.1 ? 'text-accent' : 'text-muted-foreground'}`}>
-                                  {formatPercent(drop.chance)}
-                                </span>
-                              </td>
-                              <td className="px-3 py-1.5 text-right font-mono text-xs text-muted-foreground">
-                                {formatCount(drop.countMin, drop.countMax)}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground italic">No drops</p>
-                )}
-              </div>
-            ))}
-          </SectionCard>
-        )
-      })()}
-
-      {/* How to Obtain */}
-      {obtainRecipes.length > 0 && (
-        <SectionCard title="How to Obtain" icon={ChefHat} badge={`${obtainRecipes.length}`}>
-          <div className="space-y-3">
-            {obtainRecipes.map((recipe, i) => (
-              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Used In */}
-      {usedInRecipes.length > 0 && (
-        <SectionCard title="Used In" icon={ArrowRightFromLine} badge={`${usedInRecipes.length}`}>
-          <div className="space-y-3">
-            {usedInRecipes.map((recipe, i) => (
-              <RecipeCard key={recipe.id ?? i} recipe={recipe} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />
-            ))}
-          </div>
-        </SectionCard>
-      )}
-
+              </Section>
+            )}
+            {block.states && block.states.length > 0 && (
+              <Section title={t('section.states')} count={block.states.length}>
+                <div className="flex flex-wrap gap-1.5">
+                  {block.states.map(state => (
+                    <span key={state} className="border border-border px-2 py-1 font-mono text-[11px] text-subtle">{state}</span>
+                  ))}
+                </div>
+              </Section>
+            )}
+          </>
+        )}
+        {tab === 'obtain' && <RecipeCards recipes={obtainRecipes} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />}
+        {tab === 'usedIn' && <RecipeCards recipes={usedInRecipes} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />}
+        {tab === 'references' && (block.references.length > 0 ? <ReferenceList references={block.references} /> : <EmptyNote>{t('detail.nothing')}</EmptyNote>)}
+        {tab === 'components' && <ComponentsTable components={block.components} />}
+        {tab === 'issues' && <IssueList references={block.references} diagnostics={block.diagnostics} />}
+      </DetailTabPanel>
     </div>
   )
 }

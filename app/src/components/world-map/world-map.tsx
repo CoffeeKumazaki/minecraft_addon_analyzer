@@ -11,8 +11,8 @@ type Props = {
   file: File;
   /** Add-on block id → minecraft:map_color (null when the block has none); keep referentially stable */
   customColors: Record<string, CustomMapColor>;
-  /** Entity ids defined by the analyzed add-ons; their markers link to the detail page */
-  addonEntityIds: ReadonlySet<string>;
+  /** Entity id → display name for entities defined by the analyzed add-ons; their markers link to the detail page */
+  addonEntityNames: ReadonlyMap<string, string>;
 }
 
 type TileEntry =
@@ -52,7 +52,7 @@ const DIMENSIONS: { dim: Dimension; labelKey: string }[] = [
   { dim: 2, labelKey: 'map.end' },
 ]
 
-export function WorldMap({ file, customColors, addonEntityIds }: Props) {
+export function WorldMap({ file, customColors, addonEntityNames }: Props) {
   const { t } = useLanguage()
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -84,6 +84,9 @@ export function WorldMap({ file, customColors, addonEntityIds }: Props) {
   const [jumpZ, setJumpZ] = useState('')
 
   const tileKey = (d: Dimension, level: number, tx: number, tz: number) => `${d}:${level}:${tx}:${tz}`
+  /** Add-on display name; vanilla entities have no name data, so they show their id */
+  const entityName = (e: EntityMarker) =>
+    addonEntityNames.get(e.identifier) ?? e.identifier.replace(/^minecraft:/, '')
 
   const draw = useCallback(() => {
     drawQueuedRef.current = false
@@ -653,7 +656,7 @@ export function WorldMap({ file, customColors, addonEntityIds }: Props) {
         <div className="absolute bottom-2 left-2 flex items-center gap-3 bg-card/90 border border-border px-2 py-1 font-mono text-[11px]">
           {hover?.entity ? (
             <span>
-              {hover.entity.identifier.replace(/^minecraft:/, '')}
+              {entityName(hover.entity)}
               {hover.entity.name && <> “{hover.entity.name}”</>}
               {' '}· X {Math.floor(hover.entity.x)} / Y {Math.floor(hover.entity.y)} / Z {Math.floor(hover.entity.z)}
             </span>
@@ -716,8 +719,8 @@ export function WorldMap({ file, customColors, addonEntityIds }: Props) {
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                {selected.name && <div className="font-semibold">{selected.name}</div>}
-                <div className="font-mono">{selected.identifier}</div>
+                <div className="font-semibold">{selected.name || entityName(selected)}</div>
+                {selected.name && <div className="text-muted-foreground">{entityName(selected)}</div>}
               </div>
               <button
                 onClick={() => setSelected(null)}
@@ -730,7 +733,7 @@ export function WorldMap({ file, customColors, addonEntityIds }: Props) {
             <div className="font-mono text-muted-foreground">
               X {Math.floor(selected.x)} / Y {Math.floor(selected.y)} / Z {Math.floor(selected.z)}
             </div>
-            {addonEntityIds.has(selected.identifier) && (
+            {addonEntityNames.has(selected.identifier) && (
               <Link
                 to={`/results/entities/${encodeURIComponent(selected.identifier)}`}
                 className="inline-block font-heading text-[10px] font-semibold tracking-[1px] text-accent-foreground bg-accent px-2 py-1 hover:opacity-90"

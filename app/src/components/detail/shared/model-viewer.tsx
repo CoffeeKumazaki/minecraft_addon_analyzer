@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { RotateCcw, RefreshCw, TriangleAlert } from 'lucide-react'
+import { RotateCcw, RefreshCw, TriangleAlert, Box } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { GeometryDef, GeometryCube, Vec3 } from '@/analyzer/geometry-parser'
+import type { FlipbookInfo } from '@/types'
 import {
   BOX_FACES, SIDE_FACES, DEG, type FaceName,
   toScenePoint, toSceneRotation, cubeFaceUVs, faceMaterialInstance,
@@ -27,7 +28,16 @@ export type ModelViewerProps = (
   height?: number
   /** Direction from the model center towards the camera (scene space) */
   cameraDirection?: [number, number, number]
+  /** Texture URL → flipbook animation (flipbook_textures.json) */
+  flipbooks?: Record<string, FlipbookInfo>
+  /** Block collision / selection boxes drawn as outlines over the model */
+  boxes?: BoundsBox[]
 }
+
+/** An axis-aligned box in block model space (origin is the min corner, like geometry cubes) */
+export type BoundsBox = { kind: 'collision' | 'selection'; label: string; origin: Vec3; size: Vec3 }
+
+const BOX_COLORS: Record<BoundsBox['kind'], string> = { collision: '#FFD27A', selection: '#7FE3FF' }
 
 /** Bedrock entities face north (-Z in scene space); view them from the north-west (front-right) */
 const DEFAULT_CAMERA_DIRECTION: [number, number, number] = [-0.7, 0.45, -1]
@@ -145,6 +155,53 @@ type LoadedContent = {
   object: THREE.Object3D
   materials: THREE.Material[]
   textures: THREE.Texture[]
+  /** Advances flipbook textures; called every frame with the current time in ms */
+  animate?: (timeMs: number) => void
+}
+
+/** Minecraft runs 20 ticks per second */
+const TICKS_PER_SECOND = 20
+
+/**
+ * Show one frame of a vertical flipbook strip and return a function that advances it.
+ * Returns null when the image is not a strip (e.g. the texture is already square).
+ */
+function setupFlipbook(tex: THREE.Texture, info: FlipbookInfo): ((timeMs: number) => void) | null {
+  const img = tex.image as { width?: number; height?: number } | undefined
+  // Frames are square and stacked vertically; anything else is shown as a plain texture
+  if (!img?.width || !img.height || img.height <= img.width || img.height % img.width !== 0) return null
+  const frameCount = img.height / img.width
+  const sequential = Array.from({ length: frameCount }, (_, i) => i)
+  const listed = (info.frames ?? []).filter(f => Number.isInteger(f) && f >= 0 && f < frameCount)
+  // An explicit order with no usable frame falls back to playing the strip top to bottom
+  const order = listed.length > 0 ? listed : sequential
+  tex.repeat.set(1, 1 / frameCount)
+  // flipY puts frame 0 (top of the image) at the top of the v range
+  const showFrame = (frame: number) => { tex.offset.y = 1 - (frame + 1) / frameCount }
+  showFrame(order[0])
+  return timeMs => {
+    const step = Math.floor((timeMs / 1000) * TICKS_PER_SECOND / info.ticksPerFrame) % order.length
+    showFrame(order[step])
+  }
+}
+
+/** Set up every flipbook texture that was loaded and combine their animators */
+function flipbookAnimator(urls: string[], loaded: (THREE.Texture | null)[], flipbooks: Record<string, FlipbookInfo>) {
+  const animators = urls.flatMap((url, i) => {
+    const tex = loaded[i]
+    const info = flipbooks[url]
+    const animate = tex && info ? setupFlipbook(tex, info) : null
+    return animate ? [animate] : []
+  })
+  return animators.length > 0 ? (timeMs: number) => animators.forEach(a => a(timeMs)) : undefined
+}
+
+/** Height of one frame for flipbook strips, so UVs in geometry texture space stay per frame */
+function frameHeight(tex: THREE.Texture | null, info: FlipbookInfo | undefined): number | undefined {
+  const img = tex?.image as { width?: number; height?: number } | undefined
+  if (!img?.width || !img.height) return undefined
+  // Same condition as setupFlipbook, so UV scale and the displayed frame always agree
+  return info && img.height > img.width && img.height % img.width === 0 ? img.width : img.height
 }
 
 function texturedMaterial(tex: THREE.Texture | null): THREE.Material {
@@ -165,15 +222,18 @@ async function loadGeometryContent(
   geometry: GeometryDef,
   textureSrc: string | undefined,
   materialTextures: Record<string, string>,
+  flipbooks: Record<string, FlipbookInfo>,
 ): Promise<LoadedContent> {
   const urls = [...new Set([textureSrc, ...Object.values(materialTextures)].filter((u): u is string => !!u))]
   const loaded = await Promise.all(urls.map(loadTexture))
   const textures = loaded.filter((t): t is THREE.Texture => t != null)
-  const defaultTex = textureSrc ? loaded[urls.indexOf(textureSrc)] : (loaded.find(t => t != null) ?? null)
-  // UVs are in geometry texture space; fall back to the default texture's pixel size
+  const defaultIndex = textureSrc ? urls.indexOf(textureSrc) : loaded.findIndex(t => t != null)
+  const defaultTex = defaultIndex >= 0 ? loaded[defaultIndex] : null
+  // UVs are in geometry texture space; fall back to the default texture's pixel size (one frame for flipbooks)
   const img = defaultTex?.image as { width?: number; height?: number } | undefined
   const texW = geometry.textureWidth ?? img?.width ?? 64
-  const texH = geometry.textureHeight ?? img?.height ?? 64
+  const texH = geometry.textureHeight ?? frameHeight(defaultTex, flipbooks[urls[defaultIndex]]) ?? 64
+  const animate = flipbookAnimator(urls, loaded, flipbooks)
 
   const defaultMaterial = texturedMaterial(defaultTex)
   const hiddenMaterial = new THREE.MeshBasicMaterial({ visible: false })
@@ -194,6 +254,7 @@ async function loadGeometryContent(
       object: buildModel(geometry, texW, texH, resolveMaterial, hiddenMaterial),
       materials,
       textures,
+      animate,
     }
   } catch (err) {
     materials.forEach(m => m.dispose())
@@ -203,9 +264,10 @@ async function loadGeometryContent(
 }
 
 /** Full block: each face shows its whole texture, default BoxGeometry UVs keep sides upright */
-async function loadCubeContent(faces: CubeFaceTextures): Promise<LoadedContent> {
+async function loadCubeContent(faces: CubeFaceTextures, flipbooks: Record<string, FlipbookInfo>): Promise<LoadedContent> {
   const urls = [...new Set(Object.values(faces).filter((u): u is string => !!u))]
   const loaded = await Promise.all(urls.map(loadTexture))
+  const animate = flipbookAnimator(urls, loaded, flipbooks)
   const texByUrl = new Map(urls.map((u, i) => [u, loaded[i]]))
   const materialByUrl = new Map<string | undefined, THREE.Material>()
   const materials = BOX_FACES.map(face => {
@@ -223,7 +285,38 @@ async function loadCubeContent(faces: CubeFaceTextures): Promise<LoadedContent> 
     object: mesh,
     materials: [...materialByUrl.values()],
     textures: loaded.filter((t): t is THREE.Texture => t != null),
+    animate,
   }
+}
+
+/** Outlines drawn on top of the model so boxes inside it stay visible; selection is dashed */
+function buildBoxOutlines(boxes: BoundsBox[]): THREE.Group {
+  const group = new THREE.Group()
+  for (const box of boxes) {
+    const [ox, oy, oz] = box.origin
+    const [sx, sy, sz] = box.size
+    const solid = new THREE.BoxGeometry(sx, sy, sz)
+    const edges = new THREE.EdgesGeometry(solid)
+    solid.dispose()
+    const material = box.kind === 'selection'
+      ? new THREE.LineDashedMaterial({ color: BOX_COLORS.selection, dashSize: 1, gapSize: 0.6, depthTest: false, transparent: true })
+      : new THREE.LineBasicMaterial({ color: BOX_COLORS.collision, depthTest: false, transparent: true })
+    const lines = new THREE.LineSegments(edges, material)
+    lines.computeLineDistances()
+    lines.position.copy(toVector3(toScenePoint([ox + sx / 2, oy + sy / 2, oz + sz / 2])))
+    lines.renderOrder = 1
+    group.add(lines)
+  }
+  return group
+}
+
+function disposeBoxOutlines(group: THREE.Group) {
+  group.traverse(obj => {
+    if (obj instanceof THREE.LineSegments) {
+      obj.geometry.dispose()
+      ;(obj.material as THREE.Material).dispose()
+    }
+  })
 }
 
 // Stable per-object ids so a new GeometryDef with the same identifier still gets a fresh session
@@ -238,6 +331,11 @@ function geometrySessionId(geometry: GeometryDef): number {
   return id
 }
 
+/** Serialize flipbooks by value so a fresh object with the same content doesn't restart the session */
+function flipbooksKey(flipbooks: Record<string, FlipbookInfo> | undefined): string {
+  return flipbooks ? JSON.stringify(Object.entries(flipbooks).sort(([a], [b]) => a.localeCompare(b))) : ''
+}
+
 /** Serialize a string map in a key-order independent way so it can be compared by value */
 function stableMapKey(map: Record<string, string> | undefined): string {
   return map ? JSON.stringify(Object.entries(map).sort(([a], [b]) => a.localeCompare(b))) : ''
@@ -250,9 +348,10 @@ function stableMapKey(map: Record<string, string> | undefined): string {
 export function ModelViewer(props: ModelViewerProps) {
   // Shape identifies the mesh; textures may change while the shape (and thus the camera view) stays
   const shapeKey = props.cubeFaces ? 'cube' : `geo|${props.geometry ? geometrySessionId(props.geometry) : 0}`
-  const sessionKey = props.cubeFaces
+  const textureKey = props.cubeFaces
     ? `cube|${JSON.stringify(BOX_FACES.map(f => props.cubeFaces[f] ?? null))}`
     : `${shapeKey}|${props.textureSrc ?? ''}|${stableMapKey(props.materialTextures)}`
+  const sessionKey = `${textureKey}|${flipbooksKey(props.flipbooks)}`
   return <ModelViewerShapeScope key={shapeKey} {...props} shapeKey={shapeKey} sessionKey={sessionKey} />
 }
 
@@ -262,6 +361,7 @@ export function ModelViewer(props: ModelViewerProps) {
  */
 function ModelViewerShapeScope({ shapeKey, sessionKey, ...props }: ModelViewerProps & { shapeKey: string; sessionKey: string }) {
   const [autoRotate, setAutoRotate] = useState(true)
+  const [showBoxes, setShowBoxes] = useState(true)
   const savedViewRef = useRef<SavedView | null>(null)
   return (
     <ModelViewerSession
@@ -271,6 +371,8 @@ function ModelViewerShapeScope({ shapeKey, sessionKey, ...props }: ModelViewerPr
       savedViewRef={savedViewRef}
       autoRotate={autoRotate}
       setAutoRotate={setAutoRotate}
+      showBoxes={showBoxes}
+      setShowBoxes={setShowBoxes}
     />
   )
 }
@@ -282,15 +384,19 @@ type SessionProps = ModelViewerProps & {
   savedViewRef: React.RefObject<SavedView | null>
   autoRotate: boolean
   setAutoRotate: React.Dispatch<React.SetStateAction<boolean>>
+  showBoxes: boolean
+  setShowBoxes: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 function ModelViewerSession({
-  geometry, textureSrc, materialTextures, cubeFaces, height = 360, cameraDirection = DEFAULT_CAMERA_DIRECTION,
-  shapeKey, savedViewRef, autoRotate, setAutoRotate,
+  geometry, textureSrc, materialTextures, cubeFaces, height = 360, cameraDirection = DEFAULT_CAMERA_DIRECTION, flipbooks, boxes,
+  shapeKey, savedViewRef, autoRotate, setAutoRotate, showBoxes, setShowBoxes,
 }: SessionProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const controlsRef = useRef<OrbitControls | null>(null)
   const autoRotateRef = useRef(autoRotate)
+  const boxGroupRef = useRef<THREE.Group | null>(null)
+  const showBoxesRef = useRef(showBoxes)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -298,9 +404,16 @@ function ModelViewerSession({
     if (controlsRef.current) controlsRef.current.autoRotate = autoRotate
   }, [autoRotate])
 
+  useEffect(() => {
+    showBoxesRef.current = showBoxes
+    if (boxGroupRef.current) boxGroupRef.current.visible = showBoxes
+  }, [showBoxes])
+
   // Compare by value so a freshly built object each render doesn't rebuild the scene
   const cubeFacesKey = cubeFaces ? JSON.stringify(BOX_FACES.map(f => cubeFaces[f] ?? null)) : null
   const materialTexturesKey = stableMapKey(materialTextures)
+  const flipbookKey = flipbooksKey(flipbooks)
+  const boxesKey = boxes && boxes.length > 0 ? JSON.stringify(boxes) : ''
   const [camX, camY, camZ] = cameraDirection
 
   useEffect(() => {
@@ -332,11 +445,19 @@ function ModelViewerSession({
     sun.position.set(0.6, 1, -0.8)
     scene.add(sun)
 
-    const grid = new THREE.GridHelper(64, 4, 0x9ca3af, 0xd1d5db)
+    const grid = new THREE.GridHelper(64, 4, 0x4a7bb0, 0x25507d)
     const gridMaterial = grid.material as THREE.Material
     gridMaterial.transparent = true
     gridMaterial.opacity = 0.5
     scene.add(grid)
+
+    // Kept out of the model so it doesn't affect framing
+    const boxGroup = boxesKey ? buildBoxOutlines(JSON.parse(boxesKey) as BoundsBox[]) : null
+    if (boxGroup) {
+      boxGroup.visible = showBoxesRef.current
+      scene.add(boxGroup)
+      boxGroupRef.current = boxGroup
+    }
 
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 5000)
     const controls = new OrbitControls(camera, renderer.domElement)
@@ -368,6 +489,7 @@ function ModelViewerSession({
       frameId = 0
       if (!visible) return
       controls.update()
+      content?.animate?.(performance.now())
       renderer.render(scene, camera)
       frameId = requestAnimationFrame(loop)
     }
@@ -382,14 +504,15 @@ function ModelViewerSession({
 
     let content: LoadedContent | null = null
     let load: Promise<LoadedContent>
+    const flipbookMap: Record<string, FlipbookInfo> = flipbookKey ? Object.fromEntries(JSON.parse(flipbookKey) as [string, FlipbookInfo][]) : {}
     if (cubeFacesKey) {
       const urls = JSON.parse(cubeFacesKey) as (string | null)[]
       const faces: CubeFaceTextures = {}
       BOX_FACES.forEach((f, i) => { if (urls[i]) faces[f] = urls[i]! })
-      load = loadCubeContent(faces)
+      load = loadCubeContent(faces, flipbookMap)
     } else if (geometry) {
       const materials = materialTexturesKey ? Object.fromEntries(JSON.parse(materialTexturesKey) as [string, string][]) : {}
-      load = loadGeometryContent(geometry, textureSrc, materials)
+      load = loadGeometryContent(geometry, textureSrc, materials, flipbookMap)
     } else {
       load = Promise.reject(new Error('No model'))
     }
@@ -442,10 +565,14 @@ function ModelViewerSession({
       }
       grid.geometry.dispose()
       gridMaterial.dispose()
+      if (boxGroup) {
+        disposeBoxOutlines(boxGroup)
+        boxGroupRef.current = null
+      }
       renderer.dispose()
       renderer.domElement.remove()
     }
-  }, [geometry, textureSrc, materialTexturesKey, cubeFacesKey, camX, camY, camZ, shapeKey, savedViewRef, setAutoRotate])
+  }, [geometry, textureSrc, materialTexturesKey, cubeFacesKey, flipbookKey, boxesKey, camX, camY, camZ, shapeKey, savedViewRef, setAutoRotate])
 
   const handleReset = () => {
     controlsRef.current?.reset()
@@ -464,6 +591,20 @@ function ModelViewerSession({
     <div className="relative border border-border-light bg-secondary/50" style={{ height }}>
       <div ref={containerRef} className="absolute inset-0 cursor-grab active:cursor-grabbing" />
       <div className="absolute top-2 right-2 flex gap-1">
+        {boxesKey && (
+          <button
+            type="button"
+            onClick={() => setShowBoxes(v => !v)}
+            title="Show collision / selection boxes"
+            aria-pressed={showBoxes}
+            className={cn(
+              'p-1.5 border border-border bg-card hover:bg-secondary transition-colors',
+              showBoxes && 'bg-accent text-accent-foreground hover:bg-accent/90',
+            )}
+          >
+            <Box className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setAutoRotate(v => !v)}
@@ -487,6 +628,27 @@ function ModelViewerSession({
       <p className="absolute bottom-2 left-2 text-[10px] text-muted-foreground pointer-events-none select-none">
         Drag: rotate · Scroll: zoom · Right-drag: pan
       </p>
+      {boxes && boxes.length > 0 && showBoxes && (
+        <ul className="absolute bottom-2 right-2 space-y-0.5 bg-card/80 border border-border-light px-2 py-1 text-[10px] text-subtle pointer-events-none select-none">
+          {(['collision', 'selection'] as const).map(kind => {
+            const ofKind = boxes.filter(box => box.kind === kind)
+            if (ofKind.length === 0) return null
+            return (
+              <li key={kind} className="flex items-center gap-1.5">
+                <span
+                  className={cn('inline-block w-3 border-t-2', kind === 'selection' && 'border-dashed')}
+                  style={{ borderColor: BOX_COLORS[kind] }}
+                />
+                {ofKind[0].label}
+                <span className="font-mono text-muted-foreground">
+                  {/* Several collision boxes: show how many instead of one size */}
+                  {ofKind.length === 1 ? ofKind[0].size.join('×') : `×${ofKind.length}`}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </div>
   )
 }

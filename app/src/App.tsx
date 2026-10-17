@@ -2,22 +2,19 @@ import { Routes, Route } from 'react-router-dom'
 import { Header } from '@/components/layout/header'
 import { UploadPage } from '@/pages/upload-page'
 import { ResultsPage } from '@/pages/results-page'
-import { DetailPage } from '@/pages/detail-page'
 
 function App() {
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       <Header />
-      <main className="flex-1">
+      <main className="flex-1 min-h-0">
         <Routes>
           <Route path="/" element={<UploadPage />} />
           <Route path="/results" element={<ResultsPage />} />
-          <Route path="/results/:category/:id" element={<DetailPage />} />
+          <Route path="/results/:category" element={<ResultsPage />} />
+          <Route path="/results/:category/:id" element={<ResultsPage />} />
         </Routes>
       </main>
-      <footer className="bg-secondary py-4 text-center text-sm text-muted-foreground">
-        Local analysis only — files are never uploaded
-      </footer>
     </div>
   )
 }
