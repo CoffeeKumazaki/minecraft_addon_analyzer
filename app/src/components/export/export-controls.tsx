@@ -1,4 +1,4 @@
-import { Download, FileText } from 'lucide-react'
+import { Download } from 'lucide-react'
 import { exportMarkdown } from '@/export/markdown-exporter'
 import type { AnalysisResult } from '@/types'
 
@@ -27,21 +27,17 @@ export function ExportControls({ result }: Props) {
     downloadFile(md, 'addon-analysis.md', 'text/markdown')
   }
 
+  const buttonClass = 'flex-1 flex items-center justify-center gap-2 py-2.5 bg-secondary font-mono text-xs text-subtle hover:text-foreground transition-colors cursor-pointer'
+
   return (
-    <div className="flex gap-3 justify-end">
-      <button
-        onClick={handleJsonExport}
-        className="flex items-center gap-2 border-2 border-border px-5 py-2.5 font-heading text-[11px] font-semibold tracking-[1px] hover:bg-secondary transition-colors cursor-pointer"
-      >
-        <Download className="h-4 w-4" />
-        EXPORT JSON
+    <div className="flex gap-2">
+      <button onClick={handleJsonExport} className={buttonClass}>
+        <Download className="h-3.5 w-3.5" />
+        JSON
       </button>
-      <button
-        onClick={handleMarkdownExport}
-        className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-2.5 font-heading text-[11px] font-semibold tracking-[1px] hover:opacity-90 transition-opacity cursor-pointer"
-      >
-        <FileText className="h-4 w-4" />
-        EXPORT MARKDOWN
+      <button onClick={handleMarkdownExport} className={buttonClass}>
+        <Download className="h-3.5 w-3.5" />
+        Markdown
       </button>
     </div>
   )

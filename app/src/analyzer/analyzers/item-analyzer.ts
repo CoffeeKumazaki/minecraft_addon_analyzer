@@ -1,3 +1,4 @@
+import { parseMenuCategory } from '@/analyzer/menu-category'
 import type { VirtualFS, ItemSpec, ItemStats, ReferenceLink } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
 import { sanitizeDisplayName } from '@/analyzer/lang-parser'
@@ -72,6 +73,7 @@ function extractItem(root: Record<string, unknown>, sourcePath: string): ItemSpe
     id,
     title: desc.display_name ? sanitizeDisplayName(String(desc.display_name)) : undefined,
     sourcePath,
+    menuCategory: parseMenuCategory(desc),
     icon,
     tags: [],
     components,

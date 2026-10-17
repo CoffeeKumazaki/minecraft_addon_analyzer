@@ -1,3 +1,4 @@
+import { parseMenuCategory } from '@/analyzer/menu-category'
 import type { VirtualFS, BlockSpec, BlockStats, ReferenceLink } from '@/types'
 import { parseJsonSafe, decodeText } from '@/lib/json-parser'
 
@@ -144,6 +145,7 @@ function extractBlock(root: Record<string, unknown>, sourcePath: string): BlockS
   return {
     id,
     sourcePath,
+    menuCategory: parseMenuCategory(desc),
     tags: [],
     textures,
     faceTextures,

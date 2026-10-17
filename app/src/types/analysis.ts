@@ -67,10 +67,17 @@ export type ItemStats = {
   useModifiers?: { useDuration?: number; movementModifier?: number };
 };
 
+/** Creative inventory placement (description.menu_category) */
+export type MenuCategory = {
+  category: string;
+  group?: string;
+};
+
 export type ItemSpec = {
   id: string;
   title?: string;
   sourcePath: string;
+  menuCategory?: MenuCategory;
   icon?: string;
   tags: string[];
   components: Record<string, unknown>;
@@ -98,6 +105,7 @@ export type BlockSpec = {
   id: string;
   title?: string;
   sourcePath: string;
+  menuCategory?: MenuCategory;
   tags: string[];
   textures: string[];
   faceTextures?: Record<string, string>;

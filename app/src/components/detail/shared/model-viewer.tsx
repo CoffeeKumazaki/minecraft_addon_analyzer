@@ -332,7 +332,7 @@ function ModelViewerSession({
     sun.position.set(0.6, 1, -0.8)
     scene.add(sun)
 
-    const grid = new THREE.GridHelper(64, 4, 0x9ca3af, 0xd1d5db)
+    const grid = new THREE.GridHelper(64, 4, 0x4a7bb0, 0x25507d)
     const gridMaterial = grid.material as THREE.Material
     gridMaterial.transparent = true
     gridMaterial.opacity = 0.5
