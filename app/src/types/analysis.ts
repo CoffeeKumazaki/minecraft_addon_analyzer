@@ -101,6 +101,15 @@ export type BlockStats = {
   onStepOff?: string;
 };
 
+/** Animated texture from textures/flipbook_textures.json: frames stacked vertically in one image */
+export type FlipbookInfo = {
+  /** flipbook_texture: path of the animation strip (without extension), may differ from the atlas image */
+  texture?: string;
+  ticksPerFrame: number;
+  /** Frame order (indices into the strip); sequential when omitted */
+  frames?: number[];
+};
+
 export type BlockSpec = {
   id: string;
   title?: string;
@@ -109,6 +118,8 @@ export type BlockSpec = {
   tags: string[];
   textures: string[];
   faceTextures?: Record<string, string>;
+  /** Texture short name → flipbook, for the animated textures this block uses */
+  flipbooks?: Record<string, FlipbookInfo>;
   states?: string[];
   lootTable?: string;
   components: Record<string, unknown>;

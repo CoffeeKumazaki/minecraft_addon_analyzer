@@ -1,5 +1,6 @@
 import type { ItemSpec, BlockSpec, EntitySpec, RecipeSpec, VirtualFS, FileIndex, Diagnostic } from '@/types'
 import type { GeometryMap } from './geometry-parser'
+import type { TextureMap } from './texture-extractor'
 
 /**
  * Resolve references between entities and check for broken references.
@@ -12,6 +13,7 @@ export function resolveReferences(
   files: VirtualFS,
   fileIndex: FileIndex,
   geometryMap?: GeometryMap,
+  textureMap?: TextureMap,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = []
 
@@ -23,6 +25,8 @@ export function resolveReferences(
 
   // Helper to check if a reference target likely exists
   const textureExists = (target: string): boolean => {
+    // Atlas short names (item_texture.json / terrain_texture.json) and paths the UI can display
+    if (textureMap?.has(target)) return true
     // Textures may be referenced by short name or partial path
     const lower = target.toLowerCase()
     for (const tex of textureFiles) {

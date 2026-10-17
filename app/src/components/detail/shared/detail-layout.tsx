@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { X, Layers, GitMerge, ArrowRightLeft, Check, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { useLanguage } from '@/context/language-context'
 import { cn } from '@/lib/utils'
-import type { MenuCategory } from '@/types'
+import type { Diagnostic, MenuCategory, ReferenceLink } from '@/types'
 
 type HeaderProps = {
   /** e.g. "ITEM / mypack:sword" */
@@ -43,6 +43,8 @@ type SummaryProps = {
   obtainCount: number
   usedInCount: number
   issueCount: number
+  /** Opens the list explaining the issues */
+  onShowIssues?: () => void
 }
 
 function SummaryStat({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
@@ -55,7 +57,7 @@ function SummaryStat({ icon: Icon, label }: { icon: LucideIcon; label: string })
 }
 
 /** One-line overview shared by items and blocks: what it is and how it is wired up */
-export function SummaryLine({ menuCategory, obtainCount, usedInCount, issueCount }: SummaryProps) {
+export function SummaryLine({ menuCategory, obtainCount, usedInCount, issueCount, onShowIssues }: SummaryProps) {
   const { t } = useLanguage()
   const categoryKey = menuCategory ? `category.${menuCategory.category}` : 'category.unset'
   const categoryLabel = t(categoryKey) === categoryKey ? menuCategory!.category : t(categoryKey)
@@ -67,15 +69,20 @@ export function SummaryLine({ menuCategory, obtainCount, usedInCount, issueCount
       </span>
       <SummaryStat icon={GitMerge} label={t('detail.obtain', { n: obtainCount })} />
       <SummaryStat icon={ArrowRightLeft} label={t('detail.usedIn', { n: usedInCount })} />
-      <span
-        className={cn(
-          'ml-auto flex items-center gap-1.5 border px-2 py-1 text-xs',
-          issueCount > 0 ? 'border-destructive text-destructive' : 'border-border-light text-accent',
-        )}
-      >
-        {issueCount > 0 ? <TriangleAlert className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-        {issueCount > 0 ? t('detail.issues', { n: issueCount }) : t('detail.noIssues')}
-      </span>
+      {issueCount > 0 ? (
+        <button
+          onClick={onShowIssues}
+          className="ml-auto flex items-center gap-1.5 border border-destructive px-2 py-1 text-xs text-destructive cursor-pointer hover:bg-destructive/10"
+        >
+          <TriangleAlert className="h-3 w-3" />
+          {issueCount === 1 ? t('detail.issue') : t('detail.issues', { n: issueCount })}
+        </button>
+      ) : (
+        <span className="ml-auto flex items-center gap-1.5 border border-border-light px-2 py-1 text-xs text-accent">
+          <Check className="h-3 w-3" />
+          {t('detail.noIssues')}
+        </span>
+      )}
     </div>
   )
 }
@@ -199,4 +206,45 @@ export function ComponentsTable({ components }: { components: Record<string, unk
 
 export function EmptyNote({ children }: { children: ReactNode }) {
   return <p className="py-6 text-center text-xs text-muted-foreground">{children}</p>
+}
+
+const ISSUE_HINTS: Record<string, string> = {
+  icon: 'issue.hint.texture',
+  texture: 'issue.hint.texture',
+  geometry: 'issue.hint.geometry',
+  animation: 'issue.hint.animation',
+  loot_table: 'issue.hint.file',
+}
+
+/** Unresolved references and diagnostics of one element, each with what was looked for and where */
+export function IssueList({ references, diagnostics }: { references: ReferenceLink[]; diagnostics: Diagnostic[] }) {
+  const { t } = useLanguage()
+  const broken = references.filter(r => !r.resolved)
+  if (broken.length === 0 && diagnostics.length === 0) return <EmptyNote>{t('detail.noIssues')}</EmptyNote>
+  return (
+    <ul className="space-y-2">
+      {broken.map((ref, i) => {
+        const kind = t(`refkind.${ref.kind}`) === `refkind.${ref.kind}` ? ref.kind : t(`refkind.${ref.kind}`)
+        return (
+          <li key={`ref-${i}`} className="border-l-2 border-destructive bg-secondary px-3.5 py-2.5 space-y-1">
+            <p className="flex items-start gap-2 text-sm">
+              <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+              <span>{t('issue.missing', { kind })}</span>
+            </p>
+            <p className="pl-5.5 font-mono text-xs text-destructive break-all">{ref.target}</p>
+            <p className="pl-5.5 text-xs text-muted-foreground">{t(ISSUE_HINTS[ref.kind] ?? 'issue.hint.file')}</p>
+          </li>
+        )
+      })}
+      {diagnostics.map((d, i) => (
+        <li key={`diag-${i}`} className={cn('border-l-2 bg-secondary px-3.5 py-2.5 space-y-1', d.level === 'error' ? 'border-destructive' : 'border-gold')}>
+          <p className="flex items-start gap-2 text-sm">
+            <TriangleAlert className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', d.level === 'error' ? 'text-destructive' : 'text-gold')} />
+            <span>{d.message}</span>
+          </p>
+          {d.path && <p className="pl-5.5 font-mono text-xs text-muted-foreground break-all">{d.path}</p>}
+        </li>
+      ))}
+    </ul>
+  )
 }

@@ -15,6 +15,7 @@ import { applyEntityTags } from './tagging/entity-rules'
 import { applyItemTags } from './tagging/item-rules'
 import { applyBlockTags } from './tagging/block-rules'
 import { resolveReferences } from './reference-resolver'
+import { parseFlipbooks, attachFlipbooks } from './flipbook-parser'
 import { generateSummary } from './summary-generator'
 import { extractTextureMap, type TextureMap } from './texture-extractor'
 import { parseGeometries, type GeometryMap } from './geometry-parser'
@@ -224,13 +225,14 @@ export async function analyzeAddon(
   // Step 7: Extract textures and parse geometries
   onProgress?.('テクスチャを抽出中...', 80)
   const textureMap = extractTextureMap(files, packPaths)
+  attachFlipbooks(blocks, parseFlipbooks(files, packPaths))
 
   onProgress?.('ジオメトリを解析中...', 83)
   const geometryMap = parseGeometries(files, fileIndex.models)
 
   // Step 8: Resolve references (using parsed geometryMap for accurate resolution)
   onProgress?.('参照を解決中...', 87)
-  const refDiags = resolveReferences(items, blocks, entities, recipes, files, fileIndex, geometryMap)
+  const refDiags = resolveReferences(items, blocks, entities, recipes, files, fileIndex, geometryMap, textureMap)
   allDiagnostics.push(...refDiags)
 
   // Collect diagnostics from all specs

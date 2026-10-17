@@ -3,10 +3,10 @@ import { Pickaxe, Sun, Flame, Map as MapIcon, Hammer, MousePointerClick } from '
 import { ReferenceList } from './shared/reference-list'
 import { BlockThumbnail, TextureThumbnail } from './shared/thumbnails'
 import { LazyModelViewer } from './shared/lazy-model-viewer'
-import { DetailHeader, SummaryLine, DetailTabBar, DetailTabPanel, Section, PropertyGroups, ComponentsTable, EmptyNote, type PropertyGroup } from './shared/detail-layout'
+import { DetailHeader, SummaryLine, DetailTabBar, DetailTabPanel, IssueList, Section, PropertyGroups, ComponentsTable, EmptyNote, type PropertyGroup } from './shared/detail-layout'
 import { RecipeCards } from './shared/recipe-diagrams'
 import { TagChip } from '@/components/workspace/tag-chip'
-import { blockThumbnailProps } from '@/lib/thumbnail-sources'
+import { blockThumbnailProps, blockTextureUrl } from '@/lib/thumbnail-sources'
 import { lookupRecipesForId, type RecipeLookup } from '@/hooks/use-recipe-lookup'
 import type { BlockSpec, BlockStats, ItemSpec, LootTableSpec } from '@/types'
 import { useLanguage } from '@/context/language-context'
@@ -23,11 +23,11 @@ const BLOCK_CAMERA_DIRECTION: [number, number, number] = [-1, 0.8, -1]
 function resolveCubeFaces(block: BlockSpec, textureMap: TextureMap | null): CubeFaceTextures | undefined {
   if (!textureMap) return undefined
   const ft = block.faceTextures ?? {}
-  const fallback = block.textures.map(t => textureMap.get(t)).find(s => s != null)
+  const fallback = block.textures.map(t => blockTextureUrl(block, t, textureMap)).find(s => s != null)
   const faces: CubeFaceTextures = {}
   for (const face of BOX_FACES) {
     const name = ft[face] ?? (SIDE_FACES.has(face) ? ft.sides : undefined) ?? ft['*']
-    const src = (name ? textureMap.get(name) : undefined) ?? fallback
+    const src = (name ? blockTextureUrl(block, name, textureMap) : undefined) ?? fallback
     if (src) faces[face] = src
   }
   return Object.keys(faces).length > 0 ? faces : undefined
@@ -38,7 +38,7 @@ function resolveMaterialTextures(block: BlockSpec, textureMap: TextureMap | null
   if (!textureMap || !block.faceTextures) return undefined
   const result: Record<string, string> = {}
   for (const [name, tex] of Object.entries(block.faceTextures)) {
-    const src = textureMap.get(tex)
+    const src = blockTextureUrl(block, tex, textureMap)
     if (src) result[name] = src
   }
   return result
@@ -177,7 +177,14 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
   const cubeFaces = geometry ? undefined : resolveCubeFaces(block, textureMap)
   const materialTextures = geometry ? resolveMaterialTextures(block, textureMap) : undefined
   // Prefer the "*" material as the default; otherwise any resolvable texture
-  const viewerTexture = materialTextures?.['*'] ?? block.textures.map(t => textureMap?.get(t)).find(s => s != null)
+  const viewerTexture = materialTextures?.['*'] ?? block.textures.map(t => blockTextureUrl(block, t, textureMap)).find(s => s != null)
+  // Animated textures, keyed by the URL the viewer loads
+  const flipbooks = block.flipbooks && textureMap
+    ? Object.fromEntries(Object.entries(block.flipbooks).flatMap(([name, info]) => {
+        const url = blockTextureUrl(block, name, textureMap)
+        return url ? [[url, info]] : []
+      }))
+    : undefined
   const issueCount = block.diagnostics.length + block.references.filter(r => !r.resolved).length
   const groups = blockPropertyGroups(block.stats, t)
   const lootTable = block.lootTable && lootTables ? findLootTable(block.lootTable, lootTables) : undefined
@@ -192,7 +199,7 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
         title={block.title ?? block.id}
         path={block.sourcePath}
       >
-        <SummaryLine menuCategory={block.menuCategory} obtainCount={obtainRecipes.length} usedInCount={usedInRecipes.length} issueCount={issueCount} />
+        <SummaryLine menuCategory={block.menuCategory} obtainCount={obtainRecipes.length} usedInCount={usedInRecipes.length} issueCount={issueCount} onShowIssues={() => setTab('issues')} />
         {block.tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">{block.tags.map(tag => <TagChip key={tag} tag={tag} className="bg-secondary px-2 py-1 text-xs" />)}</div>
         )}
@@ -205,6 +212,7 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
             { key: 'usedIn', label: t('tab.usedIn'), count: usedInRecipes.length },
             { key: 'references', label: t('tab.references'), count: block.references.length },
             { key: 'components', label: t('tab.components'), count: Object.keys(block.components).length },
+            ...(issueCount > 0 ? [{ key: 'issues', label: t('tab.issues'), count: issueCount }] : []),
           ]}
         />
       </DetailHeader>
@@ -214,8 +222,8 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
           <>
             {hasModel && (
               geometry
-                ? <LazyModelViewer key={block.id} geometry={geometry} textureSrc={viewerTexture} materialTextures={materialTextures} cameraDirection={BLOCK_CAMERA_DIRECTION} />
-                : <LazyModelViewer key={block.id} cubeFaces={cubeFaces!} cameraDirection={BLOCK_CAMERA_DIRECTION} />
+                ? <LazyModelViewer key={block.id} geometry={geometry} textureSrc={viewerTexture} materialTextures={materialTextures} cameraDirection={BLOCK_CAMERA_DIRECTION} flipbooks={flipbooks} />
+                : <LazyModelViewer key={block.id} cubeFaces={cubeFaces!} cameraDirection={BLOCK_CAMERA_DIRECTION} flipbooks={flipbooks} />
             )}
             <PropertyGroups groups={groups} />
             {lootTable && <BlockDrops lootTable={lootTable} items={items ?? []} textureMap={textureMap} />}
@@ -223,11 +231,11 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
               <Section title={t('section.textures')} count={block.textures.length}>
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-2">
                   {block.textures.map(tex => {
-                    const src = textureMap?.get(tex)
+                    const src = blockTextureUrl(block, tex, textureMap)
                     return (
                       <div key={tex} className="flex flex-col items-center gap-1.5">
                         <span className={`w-full aspect-square flex items-center justify-center border ${src ? 'border-border bg-background' : 'border-destructive'}`}>
-                          <TextureThumbnail src={src} size={40} />
+                          <TextureThumbnail src={src} size={40} firstFrame={block.flipbooks?.[tex] != null} />
                         </span>
                         <span className={`font-mono text-[10px] text-center break-all ${src ? 'text-muted-foreground' : 'text-destructive'}`}>{tex}</span>
                       </div>
@@ -251,6 +259,7 @@ export function BlockDetail({ block, textureMap, recipeTextureMap, blockRenderMa
         {tab === 'usedIn' && <RecipeCards recipes={usedInRecipes} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />}
         {tab === 'references' && (block.references.length > 0 ? <ReferenceList references={block.references} /> : <EmptyNote>{t('detail.nothing')}</EmptyNote>)}
         {tab === 'components' && <ComponentsTable components={block.components} />}
+        {tab === 'issues' && <IssueList references={block.references} diagnostics={block.diagnostics} />}
       </DetailTabPanel>
     </div>
   )

@@ -3,7 +3,7 @@ import { Package, Swords, Shirt, Drumstick, Hourglass, Crosshair, Flame } from '
 import { ReferenceList } from './shared/reference-list'
 import { TextureThumbnail } from './shared/thumbnails'
 import { RecipeCards } from './shared/recipe-diagrams'
-import { DetailHeader, SummaryLine, DetailTabBar, DetailTabPanel, Section, PropertyGroups, ComponentsTable, EmptyNote, type PropertyGroup } from './shared/detail-layout'
+import { DetailHeader, SummaryLine, DetailTabBar, DetailTabPanel, IssueList, Section, PropertyGroups, ComponentsTable, EmptyNote, type PropertyGroup } from './shared/detail-layout'
 import { TagChip } from '@/components/workspace/tag-chip'
 import { useLanguage } from '@/context/language-context'
 import { lookupRecipesForId, type RecipeLookup, type BlockRenderMap } from '@/hooks/use-recipe-lookup'
@@ -89,7 +89,7 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, blockRenderMap,
         title={item.title ?? item.id}
         path={item.sourcePath}
       >
-        <SummaryLine menuCategory={item.menuCategory} obtainCount={obtainRecipes.length} usedInCount={usedInRecipes.length} issueCount={issueCount} />
+        <SummaryLine menuCategory={item.menuCategory} obtainCount={obtainRecipes.length} usedInCount={usedInRecipes.length} issueCount={issueCount} onShowIssues={() => setTab('issues')} />
         {item.tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">{item.tags.map(tag => <TagChip key={tag} tag={tag} className="bg-secondary px-2 py-1 text-xs" />)}</div>
         )}
@@ -102,6 +102,7 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, blockRenderMap,
             { key: 'usedIn', label: t('tab.usedIn'), count: usedInRecipes.length },
             { key: 'references', label: t('tab.references'), count: item.references.length },
             { key: 'components', label: t('tab.components'), count: componentCount },
+            ...(issueCount > 0 ? [{ key: 'issues', label: t('tab.issues'), count: issueCount }] : []),
           ]}
         />
       </DetailHeader>
@@ -127,6 +128,7 @@ export function ItemDetail({ item, textureMap, recipeTextureMap, blockRenderMap,
         {tab === 'usedIn' && <RecipeCards recipes={usedInRecipes} textureMap={recipeTextureMap} blockRenderMap={blockRenderMap} />}
         {tab === 'references' && (item.references.length > 0 ? <ReferenceList references={item.references} /> : <EmptyNote>{t('detail.nothing')}</EmptyNote>)}
         {tab === 'components' && <ComponentsTable components={item.components} />}
+        {tab === 'issues' && <IssueList references={item.references} diagnostics={item.diagnostics} />}
       </DetailTabPanel>
     </div>
   )

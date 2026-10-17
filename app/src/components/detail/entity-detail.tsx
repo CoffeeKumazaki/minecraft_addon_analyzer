@@ -317,7 +317,7 @@ function SpawnConditionDisplay({ condition, index }: { condition: SpawnCondition
 }
 
 export function EntityDetail({ entity, textureMap, geometryMap, lootTables, spawnRules, trades, items, blocks }: Props) {
-  const { t } = useLanguage()
+  const { language } = useLanguage()
   const texSrc = entity.textures[0] ? textureMap?.get(entity.textures[0]) : undefined
   const geoId = entity.geometries[0]
   const geometry = geoId ? geometryMap?.get(geoId) : undefined
@@ -475,7 +475,7 @@ export function EntityDetail({ entity, textureMap, geometryMap, lootTables, spaw
 
       {/* Behaviors */}
       {entity.behaviors.length > 0 && (() => {
-        const isJa = t('items') !== 'Items'
+        const isJa = language === 'ja'
         const grouped = new Map<string, { label: string; key: string }[]>()
         const unknown: string[] = []
         for (const b of entity.behaviors) {

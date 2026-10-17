@@ -3,6 +3,7 @@ import type { RecipeSpec, ItemSpec, BlockSpec } from '@/types'
 import type { TextureMap } from '@/analyzer/texture-extractor'
 import type { GeometryMap, GeometryDef } from '@/analyzer/geometry-parser'
 import { loadVanillaTextureMap, getVanillaBlockNames } from '@/lib/vanilla-sprites'
+import { blockThumbnailProps } from '@/lib/thumbnail-sources'
 
 export type RecipeLookup = {
   outputRecipes: Map<string, RecipeSpec[]>
@@ -120,6 +121,10 @@ export type BlockRenderInfo = {
   src?: string
   faceSrc?: BlockFaceSources
   geometry?: GeometryDef
+  /** Image URLs known to be flipbook strips (add-on blocks) */
+  stripSrcs?: string[]
+  /** Vanilla block textures are square unless animated, so a tall image is a strip */
+  tallIsStrip?: boolean
 }
 
 export type BlockRenderMap = Map<string, BlockRenderInfo>
@@ -166,29 +171,9 @@ export function useBlockRenderMap(
     const map: BlockRenderMap = new Map()
     if (!textureMap) return map
 
-    // Addon blocks (with custom geometry support)
+    // Addon blocks: same texture resolution as the block detail (custom geometry, faces, flipbook strips)
     for (const block of blocks) {
-      const src = block.textures.map(t => textureMap.get(t)).find(u => u != null)
-      const geoRef = block.references.find(r => r.kind === 'geometry')
-      const geometry = geoRef && geometryMap ? geometryMap.get(geoRef.target) : undefined
-
-      let faceSrc: BlockFaceSources | undefined
-      if (block.faceTextures) {
-        const ft = block.faceTextures
-        const fallback = ft['*']
-        const resolve = (face: string) => {
-          const texName = ft[face] ?? fallback
-          return texName ? textureMap.get(texName) : undefined
-        }
-        const top = resolve('up')
-        const left = resolve('north')
-        const right = resolve('west')
-        if (top || left || right) {
-          faceSrc = { top, left, right }
-        }
-      }
-
-      const info: BlockRenderInfo = { src, faceSrc, geometry }
+      const info: BlockRenderInfo = blockThumbnailProps(block, textureMap, geometryMap ?? null)
       map.set(block.id, info)
       map.set(normalizeId(block.id), info)
     }
@@ -215,7 +200,7 @@ export function useBlockRenderMap(
           }
         }
 
-        map.set(name, { src, faceSrc })
+        map.set(name, { src, faceSrc, tallIsStrip: true })
       }
     }
 
